@@ -21,7 +21,7 @@ class ExportPlacesRunner(
     private val log = LoggerFactory.getLogger(javaClass)
 
     companion object {
-        private val DEFAULT_DIR = System.getProperty("user.home") + "/dev/config/DB Backup"
+        private val DEFAULT_DIR = System.getProperty("user.home") + "/dev/IdeaProjects/config/OurSpots/DB Backup"
         private val CSV_HEADER = listOf(
             "id", "name", "type", "address", "latitude", "longitude",
             "description", "grade", "googlePlaceId", "googleRating",

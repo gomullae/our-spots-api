@@ -1,6 +1,17 @@
 spring:
   main:
     web-application-type: none
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:6543/postgres}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 1
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 60000
+      max-lifetime: 300000
 
 batch:
   google-api-key: ${GOOGLE_API_KEY:}
