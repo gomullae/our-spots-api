@@ -8,6 +8,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -56,6 +57,12 @@ class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     fun handleMissingParameter(e: MissingServletRequestParameterException): ApiResponse<Nothing> {
         return ApiResponse.error("필수 파라미터가 누락되었습니다: ${e.parameterName}")
+    }
+
+    @ExceptionHandler(NoResourceFoundException::class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    fun handleNoResourceFoundException(e: NoResourceFoundException): ApiResponse<Nothing> {
+        return ApiResponse.error("요청한 경로를 찾을 수 없습니다.")
     }
 
     @ExceptionHandler(Exception::class)

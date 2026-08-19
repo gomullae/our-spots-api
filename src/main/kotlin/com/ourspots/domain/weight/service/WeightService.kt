@@ -15,6 +15,10 @@ class WeightService(
     private val weightRecordRepository: WeightRecordRepository
 ) {
 
+    companion object {
+        private fun roundToOneDecimal(weightKg: Double): Double = Math.round(weightKg * 10) / 10.0
+    }
+
     fun getAllRecords(): List<WeightRecordResponse> =
         weightRecordRepository.findAllByOrderByRecordedDateDesc().map { WeightRecordResponse.from(it) }
 
@@ -22,7 +26,7 @@ class WeightService(
     fun upsertRecord(request: WeightRecordUpsertRequest): WeightRecordResponse {
         val date = request.recordedDate ?: LocalDate.now()
         val existing = weightRecordRepository.findByRecordedDate(date)
-        val weightKg = Math.round(request.weightKg * 10) / 10.0
+        val weightKg = roundToOneDecimal(request.weightKg)
 
         val record = if (existing != null) {
             existing.weightKg = weightKg
