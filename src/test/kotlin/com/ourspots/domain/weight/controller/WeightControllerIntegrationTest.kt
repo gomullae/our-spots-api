@@ -9,6 +9,7 @@ import org.junit.jupiter.api.*
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.cache.CacheManager
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
@@ -31,6 +32,9 @@ class WeightControllerIntegrationTest {
     @Autowired
     private lateinit var weightRecordRepository: WeightRecordRepository
 
+    @Autowired
+    private lateinit var cacheManager: CacheManager
+
     private lateinit var authToken: String
 
     @BeforeAll
@@ -51,6 +55,8 @@ class WeightControllerIntegrationTest {
     @BeforeEach
     fun setUp() {
         weightRecordRepository.deleteAll()
+        // 테스트 데이터를 리포지토리에 직접 넣는 경우가 많아 서비스 캐시(@CacheEvict)를 못 타므로 매번 직접 비움
+        cacheManager.getCache("weightRecords")?.clear()
     }
 
     @Nested
@@ -133,6 +139,26 @@ class WeightControllerIntegrationTest {
         }
 
         @Test
+        fun upsertRecord_afterPriorGetCachedResult_shouldInvalidateCacheAndReflectNewRecord() {
+            createTestRecord(LocalDate.of(2026, 8, 18), 70.0)
+            // 이 호출로 캐시가 채워짐
+            mockMvc.perform(get("/api/weights").header("Authorization", "Bearer $authToken"))
+                .andExpect(jsonPath("$.data.length()").value(1))
+
+            val request = WeightRecordUpsertRequest(recordedDate = LocalDate.of(2026, 8, 19), weightKg = 71.0)
+            mockMvc.perform(
+                post("/api/weights")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(request))
+            ).andExpect(status().isOk)
+
+            // 캐시가 제대로 비워졌다면 여기서 2건이 보여야 함
+            mockMvc.perform(get("/api/weights").header("Authorization", "Bearer $authToken"))
+                .andExpect(jsonPath("$.data.length()").value(2))
+        }
+
+        @Test
         fun upsertRecord_whenWeightOutOfRange_shouldReturn400() {
             val request = WeightRecordUpsertRequest(recordedDate = LocalDate.now(), weightKg = 500.0)
 
@@ -160,6 +186,23 @@ class WeightControllerIntegrationTest {
             )
                 .andExpect(status().isNoContent)
 
+            mockMvc.perform(get("/api/weights").header("Authorization", "Bearer $authToken"))
+                .andExpect(jsonPath("$.data.length()").value(0))
+        }
+
+        @Test
+        fun deleteRecord_afterPriorGetCachedResult_shouldInvalidateCache() {
+            val record = createTestRecord(LocalDate.now(), 70.0)
+            // 이 호출로 캐시가 채워짐
+            mockMvc.perform(get("/api/weights").header("Authorization", "Bearer $authToken"))
+                .andExpect(jsonPath("$.data.length()").value(1))
+
+            mockMvc.perform(
+                delete("/api/weights/${record.id}")
+                    .header("Authorization", "Bearer $authToken")
+            ).andExpect(status().isNoContent)
+
+            // 캐시가 제대로 비워졌다면 여기서 0건이 보여야 함
             mockMvc.perform(get("/api/weights").header("Authorization", "Bearer $authToken"))
                 .andExpect(jsonPath("$.data.length()").value(0))
         }
