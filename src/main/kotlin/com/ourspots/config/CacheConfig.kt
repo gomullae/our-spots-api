@@ -18,6 +18,13 @@ class CacheConfig {
                 .expireAfterWrite(12, TimeUnit.HOURS)
                 .maximumSize(100)
         )
+        caffeineCacheManager.registerCustomCache(
+            "weightRecords",
+            Caffeine.newBuilder()
+                .expireAfterWrite(5, TimeUnit.DAYS)
+                .maximumSize(10)
+                .build()
+        )
         return caffeineCacheManager
     }
 }

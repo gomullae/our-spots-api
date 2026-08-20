@@ -5,6 +5,8 @@ import com.ourspots.api.dto.WeightRecordUpsertRequest
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.domain.weight.entity.WeightRecord
 import com.ourspots.domain.weight.repository.WeightRecordRepository
+import org.springframework.cache.annotation.CacheEvict
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -19,10 +21,12 @@ class WeightService(
         private fun roundToOneDecimal(weightKg: Double): Double = Math.round(weightKg * 10) / 10.0
     }
 
+    @Cacheable("weightRecords")
     fun getAllRecords(): List<WeightRecordResponse> =
         weightRecordRepository.findAllByOrderByRecordedDateDesc().map { WeightRecordResponse.from(it) }
 
     @Transactional
+    @CacheEvict("weightRecords", allEntries = true)
     fun upsertRecord(request: WeightRecordUpsertRequest): WeightRecordResponse {
         val date = request.recordedDate ?: LocalDate.now()
         val existing = weightRecordRepository.findByRecordedDate(date)
@@ -40,6 +44,7 @@ class WeightService(
     }
 
     @Transactional
+    @CacheEvict("weightRecords", allEntries = true)
     fun deleteRecord(id: Long) {
         val record = weightRecordRepository.findById(id)
             .orElseThrow { NotFoundException("Weight record not found: $id") }
