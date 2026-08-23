@@ -26,6 +26,8 @@ class CorsConfig(
             allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
             allowedHeaders = listOf("*")
             allowCredentials = true
+            // 백업 다운로드가 파일명을 이 헤더에서 읽어옴 — 기본적으로 브라우저가 크로스오리진 응답에서 숨기는 헤더라 명시적으로 노출 필요
+            exposedHeaders = listOf("Content-Disposition")
         }
 
         val source = UrlBasedCorsConfigurationSource().apply {

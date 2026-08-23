@@ -27,19 +27,16 @@ class FeedbackService(
     fun createFeedback(request: FeedbackCreateRequest, clientIp: String) {
         val now = OffsetDateTime.now(ZoneOffset.UTC)
 
-        // 24시간 차단 확인
         val blockedUntil = blockedUntilByIp[clientIp]
         if (blockedUntil != null && blockedUntil.isAfter(now)) {
             throw TooManyRequestsException("일시적으로 차단되었습니다. 잠시 후 다시 시도해주세요.")
         }
 
-        // 1분 내 전송 횟수 확인
         val oneMinuteAgo = now.minusMinutes(1)
         val sends = recentSendsByIp.getOrPut(clientIp) { mutableListOf() }
         sends.removeIf { it.isBefore(oneMinuteAgo) }
 
         if (sends.size >= RATE_LIMIT_PER_MINUTE) {
-            // 4번째 시도 시 24시간 차단
             if (sends.size >= BLOCK_THRESHOLD - 1) {
                 blockedUntilByIp[clientIp] = now.plusHours(BLOCK_HOURS)
             }

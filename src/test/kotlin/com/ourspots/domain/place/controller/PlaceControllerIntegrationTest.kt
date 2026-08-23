@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
@@ -33,6 +34,9 @@ class PlaceControllerIntegrationTest {
     @Autowired
     private lateinit var placeRepository: PlaceRepository
 
+    @Autowired
+    private lateinit var jdbcTemplate: JdbcTemplate
+
     private lateinit var authToken: String
 
     @BeforeAll
@@ -52,7 +56,9 @@ class PlaceControllerIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        placeRepository.deleteAll()
+        // deleteAll()은 @SQLDelete 때문에 소프트 삭제(UPDATE)로 바뀌고, deleteAllInBatch()도 @SQLRestriction이 적용돼
+        // "deleted_at IS NULL"인 행만 지워짐(이미 소프트 삭제된 행은 안 지워짐) → JDBC로 직접 물리 삭제
+        jdbcTemplate.update("DELETE FROM places")
     }
 
     @Nested

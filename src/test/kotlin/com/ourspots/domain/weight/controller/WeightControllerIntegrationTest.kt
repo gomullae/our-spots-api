@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.cache.CacheManager
 import org.springframework.http.MediaType
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
@@ -35,6 +36,9 @@ class WeightControllerIntegrationTest {
     @Autowired
     private lateinit var cacheManager: CacheManager
 
+    @Autowired
+    private lateinit var jdbcTemplate: JdbcTemplate
+
     private lateinit var authToken: String
 
     @BeforeAll
@@ -54,7 +58,9 @@ class WeightControllerIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        weightRecordRepository.deleteAll()
+        // deleteAll()은 @SQLDelete 때문에 소프트 삭제(UPDATE)로 바뀌고, deleteAllInBatch()도 @SQLRestriction이 적용돼
+        // "deleted_at IS NULL"인 행만 지워짐(이미 소프트 삭제된 행은 안 지워짐) → JDBC로 직접 물리 삭제
+        jdbcTemplate.update("DELETE FROM weight_records")
         // 테스트 데이터를 리포지토리에 직접 넣는 경우가 많아 서비스 캐시(@CacheEvict)를 못 타므로 매번 직접 비움
         cacheManager.getCache("weightRecords")?.clear()
     }

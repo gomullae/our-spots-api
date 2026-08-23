@@ -53,7 +53,6 @@ class AuthService(
                     "너무 많은 시도로 인해 차단되었습니다. ${blockedUntil.toLocalDate()} ${blockedUntil.toLocalTime().withNano(0)} 이후에 다시 시도해주세요."
                 )
             } else {
-                // 차단 시간 지남 - 초기화
                 attemptCache.remove(ipAddress)
             }
         }
@@ -69,13 +68,12 @@ class AuthService(
             null
         }
 
-        // 메모리에 저장
         attemptCache[ipAddress] = AttemptInfo(newCount, blockedUntil)
 
         // DB에 기록 (공격자 정보 저장)
         val attempt = LoginAttempt(
             ipAddress = ipAddress,
-            userAgent = userAgent?.take(500), // 최대 500자
+            userAgent = userAgent?.take(500),
             endpoint = endpoint,
             attemptCount = newCount,
             blocked = blockedUntil != null
@@ -83,12 +81,10 @@ class AuthService(
         loginAttemptRepository.save(attempt)
     }
 
-    // 관리자용: 차단 해제
     fun unblockIp(ipAddress: String) {
         attemptCache.remove(ipAddress)
     }
 
-    // 관리자용: 모든 시도 기록 조회
     fun getAttemptsByIp(ipAddress: String): List<LoginAttempt> {
         return loginAttemptRepository.findByIpAddressOrderByCreatedAtDesc(ipAddress)
     }

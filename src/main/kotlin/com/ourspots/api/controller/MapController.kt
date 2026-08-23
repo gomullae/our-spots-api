@@ -32,7 +32,7 @@ class MapController(
         return ApiResponse.success(placeService.getMarkers(type, swLat, swLng, neLat, neLng, authenticated))
     }
 
-    // JwtInterceptor가 POST /api/places/** 요청에 대해 인증을 강제함
+    // JwtInterceptor가 이 경로("/api/map/markers/refresh")를 별도로 등록해 인증을 강제함
     @PostMapping("/markers/refresh")
     fun refreshMarkers(): ApiResponse<List<MarkerResponse>> {
         placeService.evictMarkersCache()
