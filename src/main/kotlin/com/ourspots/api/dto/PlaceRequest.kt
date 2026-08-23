@@ -2,6 +2,7 @@ package com.ourspots.api.dto
 
 import com.ourspots.domain.place.entity.PlaceType
 import jakarta.validation.constraints.*
+import java.time.LocalDate
 
 data class PlaceCreateRequest(
     @field:NotBlank
@@ -49,4 +50,14 @@ data class PlaceUpdateRequest(
     val googlePlaceId: String? = null,
     val googleRating: Double? = null,
     val googleRatingsTotal: Int? = null
+)
+
+// 관리자 "최근 등록 장소" 화면의 검색 조건 — 파라미터가 늘어날 때 순서 실수를 방지하기 위해 하나로 묶음
+data class RecentPlacesFilter(
+    val startDate: LocalDate? = null,
+    val endDate: LocalDate? = null,
+    val keyword: String? = null,
+    val type: PlaceType? = null,
+    val grade: Int? = null,
+    val includeDeleted: Boolean = true
 )

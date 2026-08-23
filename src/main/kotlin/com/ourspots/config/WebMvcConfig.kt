@@ -18,6 +18,6 @@ class WebMvcConfig(
             .excludePathPatterns("/api/auth/**")
 
         registry.addInterceptor(adminOnlyInterceptor)
-            .addPathPatterns("/api/weights/**")
+            .addPathPatterns("/api/weights/**", "/api/places/recent")
     }
 }

@@ -2,10 +2,24 @@ package com.ourspots.domain.place.repository
 
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
+import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import java.time.LocalDateTime
+
+// keyword는 호출부(PlaceService)에서 %,_,\ 를 이스케이프해서 전달 — LIKE 패턴 인젝션 방지
+private const val SEARCH_RECENT_PLACES_WHERE = """
+    WHERE created_at >= :start AND created_at < :end
+    AND (:includeDeleted = true OR deleted_at IS NULL)
+    AND (
+        :keyword IS NULL
+        OR LOWER(name) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '\'
+        OR LOWER(address) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '\'
+    )
+    AND (:type IS NULL OR type = :type)
+    AND (:grade IS NULL OR grade = :grade)
+"""
 
 interface PlaceRepository : JpaRepository<Place, Long> {
 
@@ -67,4 +81,25 @@ interface PlaceRepository : JpaRepository<Place, Long> {
 
     @Query("SELECT * FROM places ORDER BY id", nativeQuery = true)
     fun findAllIncludingDeleted(): List<Place>
+
+    // @SQLRestriction("deleted_at IS NULL")은 네이티브 쿼리에는 적용되지 않음 → id로 삭제된 장소도 조회 가능 (복구용)
+    @Query("SELECT * FROM places WHERE id = :id", nativeQuery = true)
+    fun findByIdIncludingDeleted(id: Long): Place?
+
+    // 관리자 "최근 등록 장소" 화면 전용 검색 — 기간/키워드/유형/등급 + 삭제 포함 여부까지 한 번에 필터링
+    // type은 @Enumerated(STRING) 컬럼이라 네이티브 쿼리에서는 String으로 바인딩 (호출부에서 PlaceType.name 전달)
+    @Query(
+        value = "SELECT * FROM places $SEARCH_RECENT_PLACES_WHERE ORDER BY created_at DESC",
+        countQuery = "SELECT count(*) FROM places $SEARCH_RECENT_PLACES_WHERE",
+        nativeQuery = true
+    )
+    fun searchRecentPlaces(
+        start: LocalDateTime,
+        end: LocalDateTime,
+        keyword: String?,
+        type: String?,
+        grade: Int?,
+        includeDeleted: Boolean,
+        pageable: Pageable
+    ): Page<Place>
 }

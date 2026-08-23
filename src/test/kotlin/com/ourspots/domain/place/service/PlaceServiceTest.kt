@@ -2,8 +2,10 @@ package com.ourspots.domain.place.service
 
 import com.ourspots.api.dto.PlaceCreateRequest
 import com.ourspots.api.dto.PlaceUpdateRequest
+import com.ourspots.api.dto.RecentPlacesFilter
 import com.ourspots.common.exception.DuplicateException
 import com.ourspots.common.exception.NotFoundException
+import com.ourspots.common.exception.ServiceUnavailableException
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
 import com.ourspots.domain.place.repository.PlaceRepository
@@ -15,6 +17,10 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
+import java.time.LocalDate
+import java.time.LocalDateTime
 import java.util.*
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -23,6 +29,9 @@ class PlaceServiceTest {
 
     @MockK
     private lateinit var placeRepository: PlaceRepository
+
+    @MockK
+    private lateinit var googlePlaceSyncService: GooglePlaceSyncService
 
     @InjectMockKs
     private lateinit var placeService: PlaceService
@@ -323,6 +332,311 @@ class PlaceServiceTest {
             // then
             assertEquals(1, result.size)
             verify { placeRepository.findByTypeWithinBounds(PlaceType.RESTAURANT, 37.0, 126.0, 38.0, 128.0) }
+        }
+    }
+
+    @Nested
+    @DisplayName("getRecentPlaces")
+    inner class GetRecentPlaces {
+
+        @Test
+        fun getRecentPlaces_whenNoDatesProvided_shouldDefaultToLastThreeMonths() {
+            // given
+            val places = listOf(
+                createPlace(1L, "최근 맛집1", PlaceType.RESTAURANT),
+                createPlace(2L, "최근 맛집2", PlaceType.RESTAURANT)
+            )
+            val startSlot = slot<LocalDateTime>()
+            val endSlot = slot<LocalDateTime>()
+            every {
+                placeRepository.searchRecentPlaces(capture(startSlot), capture(endSlot), null, null, null, true, PageRequest.of(0, 10))
+            } returns PageImpl(places, PageRequest.of(0, 10), 2)
+
+            // when
+            val result = placeService.getRecentPlaces(RecentPlacesFilter(), 0, 10)
+
+            // then
+            assertEquals(2, result.totalElements)
+            assertEquals(listOf("최근 맛집1", "최근 맛집2"), result.content.map { it.name })
+            val expectedStart = LocalDate.now().minusMonths(3).atStartOfDay()
+            val expectedEnd = LocalDate.now().plusDays(1).atStartOfDay()
+            assertEquals(expectedStart, startSlot.captured)
+            assertEquals(expectedEnd, endSlot.captured)
+        }
+
+        @Test
+        fun getRecentPlaces_whenDatesProvided_shouldUseThemAsInclusiveRange() {
+            // given
+            val startDate = LocalDate.of(2026, 1, 1)
+            val endDate = LocalDate.of(2026, 1, 31)
+            every {
+                placeRepository.searchRecentPlaces(
+                    startDate.atStartOfDay(),
+                    endDate.plusDays(1).atStartOfDay(),
+                    null, null, null, true,
+                    PageRequest.of(0, 10)
+                )
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(startDate = startDate, endDate = endDate), 0, 10)
+
+            // then
+            verify {
+                placeRepository.searchRecentPlaces(
+                    startDate.atStartOfDay(),
+                    endDate.plusDays(1).atStartOfDay(),
+                    null, null, null, true,
+                    PageRequest.of(0, 10)
+                )
+            }
+        }
+
+        @Test
+        fun getRecentPlaces_whenKeywordBlank_shouldPassNullToRepository() {
+            // given
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(keyword = "   "), 0, 10)
+
+            // then (trim 후 빈 문자열이면 필터링 안 하도록 null로 정규화)
+            verify { placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 10)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenKeywordProvided_shouldTrimAndPassThrough() {
+            // given
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), "스타벅스", null, null, true, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(keyword = "  스타벅스  "), 0, 10)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), "스타벅스", null, null, true, PageRequest.of(0, 10)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenKeywordContainsPercent_shouldEscapeBeforePassingToRepository() {
+            // given (LIKE 패턴에서 %는 와일드카드이므로 이스케이프 없이 넘기면 의도치 않게 넓게 매치됨)
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), "50\\%", null, null, true, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(keyword = "50%"), 0, 10)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), "50\\%", null, null, true, PageRequest.of(0, 10)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenKeywordContainsUnderscore_shouldEscapeBeforePassingToRepository() {
+            // given (LIKE 패턴에서 _는 임의의 한 글자를 뜻하는 와일드카드)
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), "\\_test", null, null, true, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(keyword = "_test"), 0, 10)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), "\\_test", null, null, true, PageRequest.of(0, 10)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenTypeProvided_shouldPassTypeNameToRepository() {
+            // given
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), null, "KIDS_PLAYGROUND", null, true, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(type = PlaceType.KIDS_PLAYGROUND), 0, 10)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), null, "KIDS_PLAYGROUND", null, true, PageRequest.of(0, 10)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenIncludeDeletedFalse_shouldPassThrough() {
+            // given
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), null, null, null, false, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(includeDeleted = false), 0, 10)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), null, null, null, false, PageRequest.of(0, 10)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenPageRequested_shouldPassPageAndSizeThrough() {
+            // given
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(1, 5))
+            } returns PageImpl(emptyList(), PageRequest.of(1, 5), 0)
+
+            // when
+            val result = placeService.getRecentPlaces(RecentPlacesFilter(), 1, 5)
+
+            // then
+            assertEquals(0, result.totalElements)
+            verify { placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(1, 5)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenSizeExceedsMax_shouldCapAt100() {
+            // given (관리자 전용이라 위협도는 낮지만, 실수로 큰 값을 보내 대량 조회를 유발하는 걸 방지)
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 100))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 100), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(), 0, 100000)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 100)) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenSizeIsZeroOrNegative_shouldCoerceToAtLeastOne() {
+            // given
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 1))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 1), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(), 0, 0)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 1)) }
+        }
+    }
+
+    @Nested
+    @DisplayName("restorePlace")
+    inner class RestorePlace {
+
+        @Test
+        fun restorePlace_whenPlaceSoftDeleted_shouldClearDeletedAt() {
+            // given
+            val place = createPlace(1L, "삭제됐던 맛집", PlaceType.RESTAURANT).apply {
+                deletedAt = LocalDateTime.now()
+            }
+            every { placeRepository.findByIdIncludingDeleted(1L) } returns place
+            every { placeRepository.save(any()) } answers { firstArg() }
+
+            // when
+            val result = placeService.restorePlace(1L)
+
+            // then
+            assertEquals(null, result.deletedAt)
+            verify { placeRepository.save(place) }
+        }
+
+        @Test
+        fun restorePlace_whenIdNotExists_shouldThrowNotFoundException() {
+            // given
+            every { placeRepository.findByIdIncludingDeleted(999L) } returns null
+
+            // when & then
+            assertThrows<NotFoundException> {
+                placeService.restorePlace(999L)
+            }
+            verify(exactly = 0) { placeRepository.save(any()) }
+        }
+
+        @Test
+        fun restorePlace_whenAlreadyNotDeleted_shouldSucceedIdempotently() {
+            // given (이미 deletedAt이 null인 장소를 다시 복구해도 에러 없이 그대로 성공해야 함)
+            val place = createPlace(1L, "정상 맛집", PlaceType.RESTAURANT)
+            every { placeRepository.findByIdIncludingDeleted(1L) } returns place
+            every { placeRepository.save(any()) } answers { firstArg() }
+
+            // when
+            val result = placeService.restorePlace(1L)
+
+            // then
+            assertEquals(null, result.deletedAt)
+        }
+    }
+
+    @Nested
+    @DisplayName("syncGoogleRating")
+    inner class SyncGoogleRating {
+
+        @Test
+        fun syncGoogleRating_whenNotConfigured_shouldThrowServiceUnavailableException() {
+            // given
+            every { googlePlaceSyncService.isConfigured() } returns false
+
+            // when & then
+            assertThrows<ServiceUnavailableException> {
+                placeService.syncGoogleRating(1L)
+            }
+            verify(exactly = 0) { placeRepository.findById(any()) }
+        }
+
+        @Test
+        fun syncGoogleRating_whenPlaceFoundOnGoogle_shouldUpdateRatingAndResetFailCount() {
+            // given
+            val place = createPlace(1L, "맛집", PlaceType.RESTAURANT).apply {
+                googleRatingFailCount = 2
+            }
+            every { googlePlaceSyncService.isConfigured() } returns true
+            every { placeRepository.findById(1L) } returns Optional.of(place)
+            every {
+                googlePlaceSyncService.search("맛집", "서울시 테스트구", 37.5, 127.0)
+            } returns GooglePlaceSyncService.GooglePlaceData(placeId = "abc123", rating = 4.5, ratingsTotal = 120)
+            every { placeRepository.save(any()) } answers { firstArg() }
+
+            // when
+            val result = placeService.syncGoogleRating(1L)
+
+            // then
+            assertEquals(4.5, result.googleRating)
+            assertEquals(120, result.googleRatingsTotal)
+            assertEquals(0, place.googleRatingFailCount)
+        }
+
+        @Test
+        fun syncGoogleRating_whenNotFoundOnGoogle_shouldIncrementFailCountWithoutChangingRating() {
+            // given
+            val place = createPlace(1L, "맛집", PlaceType.RESTAURANT).apply {
+                googleRatingFailCount = 0
+            }
+            every { googlePlaceSyncService.isConfigured() } returns true
+            every { placeRepository.findById(1L) } returns Optional.of(place)
+            every {
+                googlePlaceSyncService.search("맛집", "서울시 테스트구", 37.5, 127.0)
+            } returns null
+            every { placeRepository.save(any()) } answers { firstArg() }
+
+            // when
+            val result = placeService.syncGoogleRating(1L)
+
+            // then
+            assertEquals(null, result.googleRating)
+            assertEquals(1, place.googleRatingFailCount)
+        }
+
+        @Test
+        fun syncGoogleRating_whenIdNotExists_shouldThrowNotFoundException() {
+            // given
+            every { googlePlaceSyncService.isConfigured() } returns true
+            every { placeRepository.findById(999L) } returns Optional.empty()
+
+            // when & then
+            assertThrows<NotFoundException> {
+                placeService.syncGoogleRating(999L)
+            }
         }
     }
 

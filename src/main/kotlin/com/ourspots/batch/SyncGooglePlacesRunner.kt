@@ -1,20 +1,14 @@
 package com.ourspots.batch
 
 import com.ourspots.domain.place.repository.PlaceRepository
+import com.ourspots.domain.place.service.GooglePlaceSyncService
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Profile
 import org.springframework.data.domain.PageRequest
-import org.springframework.http.HttpEntity
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
-import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
-import org.springframework.web.client.RestTemplate
-import java.time.Duration
 import java.time.LocalDateTime
 
 @Component
@@ -22,26 +16,19 @@ import java.time.LocalDateTime
 @ConditionalOnProperty(name = ["batch.job"], havingValue = "sync-google")
 class SyncGooglePlacesRunner(
     private val placeRepository: PlaceRepository,
-    @Value("\${batch.google-api-key}") private val googleApiKey: String
+    private val googlePlaceSyncService: GooglePlaceSyncService
 ) : ApplicationRunner {
 
     private val log = LoggerFactory.getLogger(javaClass)
-    private val restTemplate = RestTemplate().apply {
-        requestFactory = SimpleClientHttpRequestFactory().apply {
-            setConnectTimeout(Duration.ofSeconds(5))
-            setReadTimeout(Duration.ofSeconds(10))
-        }
-    }
 
     companion object {
-        private const val PLACES_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
         private const val MAX_FAIL_COUNT = 3
         private const val REFRESH_MONTHS = 6L
         private const val API_DELAY_MS = 200L
     }
 
     override fun run(args: ApplicationArguments) {
-        if (googleApiKey.isBlank()) {
+        if (!googlePlaceSyncService.isConfigured()) {
             log.error("GOOGLE_API_KEY 환경변수가 설정되지 않았습니다.")
             return
         }
@@ -50,7 +37,6 @@ class SyncGooglePlacesRunner(
         val limit = (limitStr.toIntOrNull() ?: 100).coerceIn(1, 500)
 
         log.info("Google Places 동기화 시작")
-        log.info("Google API Key: ${googleApiKey.take(10)}...")
         log.info("처리 제한: ${limit}개")
 
         val cutoffDate = LocalDateTime.now().minusMonths(REFRESH_MONTHS)
@@ -75,7 +61,7 @@ class SyncGooglePlacesRunner(
             log.info("[${place.id}] ${place.name} 처리 중...${if (isRenewal) " (갱신)" else ""}")
 
             try {
-                val googleData = searchGooglePlace(place.name, place.address, place.latitude, place.longitude)
+                val googleData = googlePlaceSyncService.search(place.name, place.address, place.latitude, place.longitude)
 
                 if (googleData != null) {
                     place.googlePlaceId = googleData.placeId
@@ -108,49 +94,4 @@ class SyncGooglePlacesRunner(
         log.info("실패: ${failed}개")
         log.info("==========================")
     }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun searchGooglePlace(name: String, address: String, lat: Double, lng: Double): GooglePlaceData? {
-        return try {
-            val headers = HttpHeaders().apply {
-                contentType = MediaType.APPLICATION_JSON
-                set("X-Goog-Api-Key", googleApiKey)
-                set("X-Goog-FieldMask", "places.id,places.rating,places.userRatingCount")
-            }
-            val body = mapOf(
-                "textQuery" to "$name $address",
-                "maxResultCount" to 1,
-                "locationBias" to mapOf(
-                    "circle" to mapOf(
-                        "center" to mapOf("latitude" to lat, "longitude" to lng),
-                        "radius" to 500.0
-                    )
-                )
-            )
-
-            val response = restTemplate.postForObject(
-                PLACES_SEARCH_URL,
-                HttpEntity(body, headers),
-                Map::class.java
-            )
-
-            val places = response?.get("places") as? List<Map<String, Any>>
-            val place = places?.firstOrNull() ?: return null
-
-            GooglePlaceData(
-                placeId = place["id"] as? String,
-                rating = (place["rating"] as? Number)?.toDouble(),
-                ratingsTotal = (place["userRatingCount"] as? Number)?.toInt()
-            )
-        } catch (e: Exception) {
-            log.warn("Google Places 검색 실패: ${e.message}")
-            null
-        }
-    }
-
-    private data class GooglePlaceData(
-        val placeId: String?,
-        val rating: Double?,
-        val ratingsTotal: Int?
-    )
 }

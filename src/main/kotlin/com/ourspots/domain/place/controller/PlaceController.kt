@@ -6,8 +6,10 @@ import com.ourspots.domain.auth.service.JwtProvider
 import com.ourspots.domain.place.entity.PlaceType
 import com.ourspots.domain.place.service.PlaceService
 import jakarta.validation.Valid
+import org.springframework.data.domain.Page
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
+import java.time.LocalDate
 
 @RestController
 @RequestMapping("/api/places")
@@ -15,6 +17,31 @@ class PlaceController(
     private val placeService: PlaceService,
     private val jwtProvider: JwtProvider
 ) {
+
+    @GetMapping("/recent")
+    fun getRecentPlaces(
+        @RequestParam(required = false) startDate: LocalDate?,
+        @RequestParam(required = false) endDate: LocalDate?,
+        @RequestParam(required = false) keyword: String?,
+        @RequestParam(required = false) type: PlaceType?,
+        @RequestParam(required = false) grade: Int?,
+        @RequestParam(defaultValue = "true") includeDeleted: Boolean,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "10") size: Int
+    ): ApiResponse<Page<PlaceResponse>> {
+        val filter = RecentPlacesFilter(startDate, endDate, keyword, type, grade, includeDeleted)
+        return ApiResponse.success(placeService.getRecentPlaces(filter, page, size))
+    }
+
+    @PostMapping("/{id}/restore")
+    fun restorePlace(@PathVariable id: Long): ApiResponse<PlaceResponse> {
+        return ApiResponse.success(placeService.restorePlace(id))
+    }
+
+    @PostMapping("/{id}/sync-google")
+    fun syncGoogleRating(@PathVariable id: Long): ApiResponse<PlaceResponse> {
+        return ApiResponse.success(placeService.syncGoogleRating(id))
+    }
 
     @GetMapping
     fun getAllPlaces(

@@ -10,5 +10,4 @@ spring:
       max-lifetime: 300000
 
 batch:
-  google-api-key: ${GOOGLE_API_KEY:}
   kakao-rest-api-key: ${KAKAO_REST_API_KEY:}

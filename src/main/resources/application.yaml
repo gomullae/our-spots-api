@@ -28,3 +28,5 @@ app:
   jwt:
     secret: ${JWT_SECRET:}
     expiration-hours: 504
+  # 관리자 페이지에서 개별 장소 구글 평점 동기화에 사용 (배치 전용 GOOGLE_API_KEY와 같은 값 공유)
+  google-api-key: ${GOOGLE_API_KEY:}

@@ -39,6 +39,12 @@ class GlobalExceptionHandler {
         return ApiResponse.error(e.message ?: "Too many requests")
     }
 
+    @ExceptionHandler(ServiceUnavailableException::class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    fun handleServiceUnavailableException(e: ServiceUnavailableException): ApiResponse<Nothing> {
+        return ApiResponse.error(e.message ?: "Service unavailable")
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException::class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     fun handleValidationException(e: MethodArgumentNotValidException): ApiResponse<Nothing> {
