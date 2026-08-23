@@ -1,5 +1,7 @@
 package com.ourspots.domain.backup.service
 
+import com.ourspots.common.errorlog.ErrorLogRepository
+import com.ourspots.domain.auth.repository.AccessDeniedLogRepository
 import com.ourspots.domain.auth.repository.LoginAttemptRepository
 import com.ourspots.domain.backup.BackupPeriod
 import com.ourspots.domain.backup.BackupTable
@@ -11,11 +13,10 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.springframework.stereotype.Service
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 
 data class BackupFile(val filename: String, val bytes: ByteArray)
+data class TableData(val headers: List<String>, val rows: List<List<Any?>>)
 
 @Service
 class BackupExportService(
@@ -23,79 +24,110 @@ class BackupExportService(
     private val expenseRecordRepository: ExpenseRecordRepository,
     private val weightRecordRepository: WeightRecordRepository,
     private val loginAttemptRepository: LoginAttemptRepository,
-    private val feedbackRepository: FeedbackRepository
+    private val feedbackRepository: FeedbackRepository,
+    private val errorLogRepository: ErrorLogRepository,
+    private val accessDeniedLogRepository: AccessDeniedLogRepository
 ) {
     companion object {
         private val DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd")
     }
 
-    fun export(table: BackupTable, period: BackupPeriod): BackupFile {
+    // 조회용(로그 이력 화면)과 엑셀 백업이 같은 데이터를 공유 — 날짜/시각 값은 여기서 문자열로 미리 변환해
+    // JSON 직렬화든 엑셀 셀 기록이든 후속 소비자가 타입 분기 없이 그대로 쓸 수 있게 함
+    fun fetchTableData(table: BackupTable, period: BackupPeriod): TableData {
         val cutoff = LocalDate.now().minusMonths(3)
 
-        val workbook = XSSFWorkbook()
-        when (table) {
-            BackupTable.PLACES -> writeSheet(
-                workbook, table.tableName,
+        return when (table) {
+            BackupTable.PLACES -> TableData(
                 listOf("id", "name", "type", "address", "latitude", "longitude", "description", "grade", "googlePlaceId", "googleRating", "googleRatingsTotal", "createdAt", "updatedAt", "deletedAt"),
                 placeRepository.findAllIncludingDeleted()
                     .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .sortedByDescending { it.createdAt }
                     .map {
                         listOf(
                             it.id, it.name, it.type.name, it.address, it.latitude, it.longitude,
                             it.description, it.grade, it.googlePlaceId, it.googleRating, it.googleRatingsTotal,
-                            it.createdAt, it.updatedAt, it.deletedAt
+                            it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
                         )
                     }
             )
 
-            BackupTable.EXPENSE_RECORDS -> writeSheet(
-                workbook, table.tableName,
+            BackupTable.EXPENSE_RECORDS -> TableData(
                 listOf("id", "expenseDate", "paymentMethod", "category", "merchant", "amount", "createdAt", "updatedAt", "deletedAt"),
                 expenseRecordRepository.findAllIncludingDeleted()
                     .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .sortedByDescending { it.createdAt }
                     .map {
                         listOf(
-                            it.id, it.expenseDate, it.paymentMethod.name, it.category.name, it.merchant, it.amount,
-                            it.createdAt, it.updatedAt, it.deletedAt
+                            it.id, it.expenseDate.toString(), it.paymentMethod.name, it.category.name, it.merchant, it.amount,
+                            it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
                         )
                     }
             )
 
-            BackupTable.WEIGHT_RECORDS -> writeSheet(
-                workbook, table.tableName,
+            BackupTable.WEIGHT_RECORDS -> TableData(
                 listOf("id", "recordedDate", "weightKg", "memo", "createdAt", "updatedAt", "deletedAt"),
                 weightRecordRepository.findAllIncludingDeleted()
                     .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .sortedByDescending { it.createdAt }
                     .map {
-                        listOf(it.id, it.recordedDate, it.weightKg, it.memo, it.createdAt, it.updatedAt, it.deletedAt)
+                        listOf(it.id, it.recordedDate.toString(), it.weightKg, it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString())
                     }
             )
 
-            BackupTable.LOGIN_ATTEMPTS -> writeSheet(
-                workbook, table.tableName,
+            BackupTable.LOGIN_ATTEMPTS -> TableData(
                 listOf("id", "ipAddress", "userAgent", "endpoint", "attemptCount", "blocked", "createdAt"),
                 loginAttemptRepository.findAll()
                     .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .sortedByDescending { it.createdAt }
                     .map {
-                        listOf(it.id, it.ipAddress, it.userAgent, it.endpoint, it.attemptCount, it.blocked, it.createdAt)
+                        listOf(it.id, it.ipAddress, it.userAgent, it.endpoint, it.attemptCount, it.blocked, it.createdAt.toString())
                     }
             )
 
-            BackupTable.FEEDBACKS -> writeSheet(
-                workbook, table.tableName,
+            BackupTable.FEEDBACKS -> TableData(
                 listOf("id", "content", "ipAddress", "source", "createdAt"),
                 feedbackRepository.findAll()
                     .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .sortedByDescending { it.createdAt }
                     .map {
-                        listOf(it.id, it.content, it.ipAddress, it.source, it.createdAt)
+                        listOf(it.id, it.content, it.ipAddress, it.source, it.createdAt.toString())
+                    }
+            )
+
+            BackupTable.ERROR_LOGS -> TableData(
+                listOf("id", "exceptionType", "message", "method", "path", "createdAt"),
+                errorLogRepository.findAll()
+                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .sortedByDescending { it.createdAt }
+                    .map {
+                        listOf(it.id, it.exceptionType, it.message, it.method, it.path, it.createdAt.toString())
+                    }
+            )
+
+            BackupTable.ACCESS_DENIED_LOGS -> TableData(
+                listOf("id", "ipAddress", "method", "path", "message", "userAgent", "createdAt"),
+                accessDeniedLogRepository.findAll()
+                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .sortedByDescending { it.createdAt }
+                    .map {
+                        listOf(it.id, it.ipAddress, it.method, it.path, it.message, it.userAgent, it.createdAt.toString())
                     }
             )
         }
+    }
+
+    fun export(table: BackupTable, period: BackupPeriod): BackupFile {
+        val data = fetchTableData(table, period)
+
+        val workbook = XSSFWorkbook()
+        writeSheet(workbook, table.tableName, data.headers, data.rows)
 
         val output = ByteArrayOutputStream()
         workbook.use { it.write(output) }
 
         val today = LocalDate.now().format(DATE_FORMAT)
+        val cutoff = LocalDate.now().minusMonths(3)
         val periodLabel = if (period == BackupPeriod.ALL) "all" else "${cutoff.format(DATE_FORMAT)}-${LocalDate.now().format(DATE_FORMAT)}"
         return BackupFile("${table.tableName}_${today}_$periodLabel.xlsx", output.toByteArray())
     }
@@ -114,7 +146,6 @@ class BackupExportService(
                     null -> {}
                     is Number -> cell.setCellValue(value.toDouble())
                     is Boolean -> cell.setCellValue(value)
-                    is LocalDate, is LocalDateTime, is OffsetDateTime -> cell.setCellValue(value.toString())
                     else -> cell.setCellValue(sanitizeCell(value.toString()))
                 }
             }

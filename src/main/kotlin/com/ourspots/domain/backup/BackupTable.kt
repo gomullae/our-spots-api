@@ -5,5 +5,7 @@ enum class BackupTable(val tableName: String) {
     EXPENSE_RECORDS("expense_records"),
     WEIGHT_RECORDS("weight_records"),
     LOGIN_ATTEMPTS("login_attempts"),
-    FEEDBACKS("feedbacks")
+    FEEDBACKS("feedbacks"),
+    ERROR_LOGS("error_logs"),
+    ACCESS_DENIED_LOGS("access_denied_logs")
 }
