@@ -20,7 +20,8 @@ class ExpenseService(
 ) {
     companion object {
         private val WEEK_LABEL_FORMAT = DateTimeFormatter.ofPattern("M/d")
-        private const val TOP_ITEMS_COUNT = 3
+        // 식비/생활비 구분 없이 통합해서 금액 큰 순 상위 5개만 상세 내역으로 보여줌
+        private const val REGULAR_TOP_ITEMS_COUNT = 5
     }
 
     fun getRecords(startDate: LocalDate, endDate: LocalDate, includeDeleted: Boolean = false): List<ExpenseRecordResponse> =
@@ -74,18 +75,19 @@ class ExpenseService(
         val livingRecords = records.filter { it.category == ExpenseCategory.LIVING }
         val irregularRecords = records.filter { it.category == ExpenseCategory.IRREGULAR }
 
+        val regularTopItems = (foodRecords.map { "식비" to it } + livingRecords.map { "생활비" to it })
+            .sortedByDescending { it.second.amount }
+            .take(REGULAR_TOP_ITEMS_COUNT)
+            .map { Triple(it.first, it.second.merchant, it.second.amount) }
+
         telegramNotificationService.notifyWeeklyExpenseSummary(
             weekLabel = "${startDate.format(WEEK_LABEL_FORMAT)}~${endDate.format(WEEK_LABEL_FORMAT)}",
             budget = budget,
             foodTotal = foodRecords.sumOf { it.amount },
-            foodTop3 = topItems(foodRecords),
             livingTotal = livingRecords.sumOf { it.amount },
-            livingTop3 = topItems(livingRecords),
+            topItems = regularTopItems,
             irregularTotal = irregularRecords.sumOf { it.amount },
             irregularItems = irregularRecords.sortedByDescending { it.amount }.map { it.merchant to it.amount }
         )
     }
-
-    private fun topItems(records: List<ExpenseRecord>): List<Pair<String, Long>> =
-        records.sortedByDescending { it.amount }.take(TOP_ITEMS_COUNT).map { it.merchant to it.amount }
 }

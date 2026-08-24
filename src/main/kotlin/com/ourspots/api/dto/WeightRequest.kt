@@ -3,10 +3,12 @@ package com.ourspots.api.dto
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.PastOrPresent
 import jakarta.validation.constraints.Size
 import java.time.LocalDate
 
 data class WeightRecordUpsertRequest(
+    @field:PastOrPresent
     val recordedDate: LocalDate? = null,
 
     @field:NotNull

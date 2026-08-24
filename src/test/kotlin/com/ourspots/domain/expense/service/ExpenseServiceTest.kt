@@ -212,7 +212,7 @@ class ExpenseServiceTest {
     inner class SendWeeklySummary {
 
         @Test
-        fun sendWeeklySummary_shouldGroupByCategoryAndCapTop3() {
+        fun sendWeeklySummary_shouldMergeFoodAndLivingAndCapTop5ByAmount() {
             val start = LocalDate.of(2026, 8, 17)
             val end = LocalDate.of(2026, 8, 23)
             val records = listOf(
@@ -221,7 +221,8 @@ class ExpenseServiceTest {
                 createRecord(3L, start, category = ExpenseCategory.FOOD, merchant = "스타벅스", amount = 18000),
                 createRecord(4L, start, category = ExpenseCategory.FOOD, merchant = "편의점", amount = 5000),
                 createRecord(5L, start, category = ExpenseCategory.LIVING, merchant = "다이소", amount = 80000),
-                createRecord(6L, start, category = ExpenseCategory.IRREGULAR, merchant = "병원", amount = 50000)
+                createRecord(6L, start, category = ExpenseCategory.LIVING, merchant = "올리브영", amount = 20000),
+                createRecord(7L, start, category = ExpenseCategory.IRREGULAR, merchant = "병원", amount = 50000)
             )
             every { expenseRecordRepository.findByExpenseDateBetween(start, end, false) } returns records
 
@@ -232,9 +233,15 @@ class ExpenseServiceTest {
                     weekLabel = "8/17~8/23",
                     budget = 500000,
                     foodTotal = 100000,
-                    foodTop3 = listOf("이마트" to 45000L, "배달의민족" to 32000L, "스타벅스" to 18000L),
-                    livingTotal = 80000,
-                    livingTop3 = listOf("다이소" to 80000L),
+                    livingTotal = 100000,
+                    // 식비/생활비 통합, 금액 큰 순 상위 5개 (편의점 5,000원은 6번째라 제외)
+                    topItems = listOf(
+                        Triple("생활비", "다이소", 80000L),
+                        Triple("식비", "이마트", 45000L),
+                        Triple("식비", "배달의민족", 32000L),
+                        Triple("생활비", "올리브영", 20000L),
+                        Triple("식비", "스타벅스", 18000L)
+                    ),
                     irregularTotal = 50000,
                     irregularItems = listOf("병원" to 50000L)
                 )

@@ -9,26 +9,34 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestTemplate
 import java.time.Duration
+import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 @Service
 class TelegramNotificationService(
     @Value("\${app.telegram.bot-token}") private val botToken: String,
     // 나중에 가계부 알림만 배우자 공동 채팅방으로 분리할 수 있어서 이름을 defaultChatId로 — send()가 override 받을 수 있게 열어둠
-    @Value("\${app.telegram.chat-id}") private val defaultChatId: String
-) {
-    private val logger = LoggerFactory.getLogger(javaClass)
-    private val restTemplate = RestTemplate().apply {
+    @Value("\${app.telegram.chat-id}") private val defaultChatId: String,
+    // 기본값을 생성자 파라미터로 열어둬서 테스트에서 mock RestTemplate을 주입할 수 있게 함 (컨텍스트에 RestTemplate 빈이 없으면 Spring이 이 기본값을 그대로 사용)
+    private val restTemplate: RestTemplate = RestTemplate().apply {
         requestFactory = SimpleClientHttpRequestFactory().apply {
             setConnectTimeout(Duration.ofSeconds(5))
             setReadTimeout(Duration.ofSeconds(5))
         }
     }
+) {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    // 비정상 접근 텔레그램 알림 쿨다운용 (IP별 마지막 발송 시각) — DB(access_denied_logs) 기록과는 별개 경로라 여기서만 억제됨
+    private val lastAccessDeniedNotifiedAt = ConcurrentHashMap<String, Instant>()
 
     companion object {
         // 즉시성 알림(방명록/비정상접근/에러)은 폰 알림으로 한눈에 읽을 수 있는 길이로 강제 컷
         private const val MAX_MESSAGE_LENGTH = 300
         // 주간 정산은 본인이 의도적으로 누르는 리포트 성격이라 좀 더 넉넉하게
         private const val WEEKLY_SUMMARY_MAX_LENGTH = 800
+        // 동일 IP의 반복 비정상 접근은 이 기간 동안 최초 1건만 알림 (도배 방지, DB 로그는 매번 그대로 기록됨)
+        private val ACCESS_DENIED_COOLDOWN = Duration.ofMinutes(10)
     }
 
     fun notifyNewFeedback(content: String) {
@@ -36,12 +44,24 @@ class TelegramNotificationService(
     }
 
     fun notifyAccessDenied(method: String, path: String, ipAddress: String, message: String?) {
+        if (!shouldNotifyAccessDenied(ipAddress)) return
         send(
             "🚨 <b>비정상 접근 감지</b>\n" +
                 "${escapeHtml(truncate(method, 10))} ${escapeHtml(truncate(path, 100))}\n" +
                 "IP: ${escapeHtml(truncate(ipAddress, 50))}\n" +
                 "사유: ${escapeHtml(truncate(message ?: "-", 150))}"
         )
+    }
+
+    // 같은 IP는 쿨다운 기간 내 최초 1건만 알림 — 그래도 인지는 해야 하니 완전 차단이 아니라 빈도만 줄임
+    private fun shouldNotifyAccessDenied(ipAddress: String): Boolean {
+        val now = Instant.now()
+        val lastNotifiedAt = lastAccessDeniedNotifiedAt[ipAddress]
+        if (lastNotifiedAt != null && Duration.between(lastNotifiedAt, now) < ACCESS_DENIED_COOLDOWN) {
+            return false
+        }
+        lastAccessDeniedNotifiedAt[ipAddress] = now
+        return true
     }
 
     fun notifyServerError(exceptionType: String, method: String, path: String, message: String?) {
@@ -57,9 +77,9 @@ class TelegramNotificationService(
         weekLabel: String,
         budget: Long,
         foodTotal: Long,
-        foodTop3: List<Pair<String, Long>>,
         livingTotal: Long,
-        livingTop3: List<Pair<String, Long>>,
+        // 식비/생활비 구분 없이 금액 큰 순으로 이미 정렬·상위 N개로 잘라 넘어옴 (카테고리 라벨, 상호명, 금액)
+        topItems: List<Triple<String, String, Long>>,
         irregularTotal: Long,
         irregularItems: List<Pair<String, Long>>
     ) {
@@ -84,11 +104,13 @@ class TelegramNotificationService(
         sb.append("🎲 <b>비정기 예산</b>\n")
         sb.append("비정기 지출 ${format(irregularTotal)}원\n")
         sb.append("$totalLine\n\n")
-        sb.append("📋 <b>정기 지출 주요 내역</b>\n")
-        sb.append("[식비] ${format(foodTotal)}원\n")
-        appendItems(sb, foodTop3)
-        sb.append("\n[생활비] ${format(livingTotal)}원\n")
-        appendItems(sb, livingTop3)
+        sb.append("🗂️ <b>정기 지출 내역</b>\n")
+        sb.append("식비 ${format(foodTotal)}원\n")
+        sb.append("생활비 ${format(livingTotal)}원\n\n")
+        sb.append("🔍 <b>주요 정기 지출 상세 내역</b>\n")
+        topItems.forEachIndexed { i, (category, merchant, amount) ->
+            sb.append("${i + 1}. [${escapeHtml(category)}] ${escapeHtml(truncate(merchant, 30))} ${format(amount)}\n")
+        }
         if (irregularItems.isNotEmpty()) {
             sb.append("\n🧾 <b>비정기지출 내역</b>\n")
             appendItems(sb, irregularItems)
@@ -111,7 +133,10 @@ class TelegramNotificationService(
         // 로컬/테스트 환경처럼 토큰이 설정 안 된 경우 불필요한 외부 호출을 시도하지 않음 (GooglePlaceSyncService.isConfigured()와 동일한 취지)
         if (botToken.isBlank() || chatId.isBlank()) return
         try {
-            val finalText = truncate(text, maxLength)
+            // 각 조각을 이미 개별적으로 길이 제한했지만, 조합 후에도 maxLength를 넘는 경우를 대비한 안전망.
+            // 이 시점의 text는 이미 <b> 등 HTML 태그가 섞여 있어 그대로 자르면 태그 중간이 잘려 깨진 HTML(닫히지 않은 태그)이 될 수 있으므로,
+            // 실제로 잘라야 할 때만 태그를 제거한 평문 기준으로 자름 (서식은 포기하더라도 발송 자체가 실패하지 않도록)
+            val finalText = if (text.length > maxLength) truncate(stripHtml(text), maxLength) else text
             val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
             val body = mapOf(
                 "chat_id" to chatId,
@@ -130,6 +155,9 @@ class TelegramNotificationService(
 
     private fun truncate(value: String, maxLength: Int): String =
         if (value.length > maxLength) value.take(maxLength) + "…" else value
+
+    private fun stripHtml(value: String): String =
+        value.replace(Regex("</?[a-zA-Z][^>]*>"), "")
 
     // parse_mode=HTML에서는 <, >, & 세 개만 이스케이프하면 됨 (Telegram Bot API Bold/Italic 등 HTML 서식 문서 기준)
     private fun escapeHtml(value: String): String =

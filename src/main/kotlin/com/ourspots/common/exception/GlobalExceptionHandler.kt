@@ -8,6 +8,7 @@ import com.ourspots.common.util.RequestUtils
 import com.ourspots.domain.auth.entity.AccessDeniedLog
 import com.ourspots.domain.auth.repository.AccessDeniedLogRepository
 import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.ConstraintViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -15,6 +16,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.servlet.resource.NoResourceFoundException
 
 @RestControllerAdvice
@@ -103,6 +105,21 @@ class GlobalExceptionHandler(
     @ResponseStatus(HttpStatus.NOT_FOUND)
     fun handleNoResourceFoundException(e: NoResourceFoundException): ApiResponse<Nothing> {
         return ApiResponse.error("요청한 경로를 찾을 수 없습니다.")
+    }
+
+    // 쿼리 파라미터가 타입에 안 맞을 때(예: enum 파라미터에 잘못된 문자열, budget에 숫자 아닌 값) — 서버 버그가 아니라 잘못된 요청이므로 400
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    fun handleMethodArgumentTypeMismatch(e: MethodArgumentTypeMismatchException): ApiResponse<Nothing> {
+        return ApiResponse.error("파라미터 형식이 올바르지 않습니다: ${e.name}")
+    }
+
+    // @RequestParam에 직접 붙인 제약(@Positive 등)이 실패했을 때 — @Valid @RequestBody와 달리 별도 예외 타입으로 발생함
+    @ExceptionHandler(ConstraintViolationException::class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    fun handleConstraintViolationException(e: ConstraintViolationException): ApiResponse<Nothing> {
+        val message = e.constraintViolations.joinToString(", ") { "${it.propertyPath}: ${it.message}" }
+        return ApiResponse.error(message)
     }
 
     @ExceptionHandler(Exception::class)

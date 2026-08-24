@@ -5,12 +5,15 @@ import com.ourspots.api.dto.ExpenseRecordResponse
 import com.ourspots.common.response.ApiResponse
 import com.ourspots.domain.expense.service.ExpenseService
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Positive
 import org.springframework.http.HttpStatus
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 import java.time.LocalDate
 
 @RestController
 @RequestMapping("/api/expenses")
+@Validated
 class ExpenseController(
     private val expenseService: ExpenseService
 ) {
@@ -51,7 +54,7 @@ class ExpenseController(
     fun sendWeeklySummary(
         @RequestParam startDate: LocalDate,
         @RequestParam endDate: LocalDate,
-        @RequestParam budget: Long
+        @RequestParam @Positive budget: Long
     ): ApiResponse<Unit> {
         expenseService.sendWeeklySummary(startDate, endDate, budget)
         return ApiResponse.success(Unit)

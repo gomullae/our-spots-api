@@ -1,4 +1,4 @@
-package com.ourspots.domain.feedback.controller
+package com.ourspots.api.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ourspots.api.dto.FeedbackCreateRequest
