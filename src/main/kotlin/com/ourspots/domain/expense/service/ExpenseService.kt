@@ -3,9 +3,11 @@ package com.ourspots.domain.expense.service
 import com.ourspots.api.dto.ExpenseRecordRequest
 import com.ourspots.api.dto.ExpenseRecordResponse
 import com.ourspots.common.exception.NotFoundException
+import com.ourspots.common.notification.CategorySpend
 import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.expense.entity.ExpenseCategory
 import com.ourspots.domain.expense.entity.ExpenseRecord
+import com.ourspots.domain.expense.entity.PaymentMethod
 import com.ourspots.domain.expense.repository.ExpenseRecordRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -83,11 +85,18 @@ class ExpenseService(
         telegramNotificationService.notifyWeeklyExpenseSummary(
             weekLabel = "${startDate.format(WEEK_LABEL_FORMAT)}~${endDate.format(WEEK_LABEL_FORMAT)}",
             budget = budget,
-            foodTotal = foodRecords.sumOf { it.amount },
-            livingTotal = livingRecords.sumOf { it.amount },
+            foodSpend = categorySpend(foodRecords),
+            livingSpend = categorySpend(livingRecords),
             topItems = regularTopItems,
             irregularTotal = irregularRecords.sumOf { it.amount },
             irregularItems = irregularRecords.sortedByDescending { it.amount }.map { it.merchant to it.amount }
         )
+    }
+
+    // 진우 결제 = 초영결제(CHOYOUNG_PAYMENT)를 제외한 나머지 결제수단 전부, 초영 결제 = CHOYOUNG_PAYMENT만
+    private fun categorySpend(records: List<ExpenseRecord>): CategorySpend {
+        val total = records.sumOf { it.amount }
+        val choyoungTotal = records.filter { it.paymentMethod == PaymentMethod.CHOYOUNG_PAYMENT }.sumOf { it.amount }
+        return CategorySpend(total = total, jinwooTotal = total - choyoungTotal, choyoungTotal = choyoungTotal)
     }
 }

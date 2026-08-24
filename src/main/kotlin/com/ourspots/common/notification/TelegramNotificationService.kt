@@ -12,6 +12,9 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
+// 카테고리(식비/생활비)별 지출 합계 + 결제자(진우/초영) 구분 합계
+data class CategorySpend(val total: Long, val jinwooTotal: Long, val choyoungTotal: Long)
+
 @Service
 class TelegramNotificationService(
     @Value("\${app.telegram.bot-token}") private val botToken: String,
@@ -76,38 +79,36 @@ class TelegramNotificationService(
     fun notifyWeeklyExpenseSummary(
         weekLabel: String,
         budget: Long,
-        foodTotal: Long,
-        livingTotal: Long,
+        foodSpend: CategorySpend,
+        livingSpend: CategorySpend,
         // 식비/생활비 구분 없이 금액 큰 순으로 이미 정렬·상위 N개로 잘라 넘어옴 (카테고리 라벨, 상호명, 금액)
         topItems: List<Triple<String, String, Long>>,
         irregularTotal: Long,
         irregularItems: List<Pair<String, Long>>
     ) {
-        val regularTotal = foodTotal + livingTotal
+        val regularTotal = foodSpend.total + livingSpend.total
         val regularDiff = budget - regularTotal
         val regularLine = if (regularDiff >= 0) "✅ <b>${format(regularDiff)}원 절약</b>" else "⚠️ <b>${format(-regularDiff)}원 초과</b>"
 
-        val totalDiff = budget - (regularTotal + irregularTotal)
-        val totalLine = if (totalDiff >= 0) {
-            "✅ ${format(totalDiff)}원 절약 (비정기지출 포함시)"
-        } else {
-            "⚠️ ${format(-totalDiff)}원 초과 (비정기지출 포함시)"
-        }
+        val totalSpend = regularTotal + irregularTotal
+        val totalDiff = budget - totalSpend
+        val totalLine = if (totalDiff >= 0) "✅ ${format(totalDiff)}원 절약" else "⚠️ ${format(-totalDiff)}원 초과"
 
         val sb = StringBuilder()
         sb.append("📅 <b>$weekLabel 주간 정산</b>\n\n")
         sb.append("📊 <b>정기 예산</b>\n")
-        sb.append("정기 예산 ${format(budget)}원\n")
-        sb.append("정기 지출 ${format(regularTotal)}원\n")
-        sb.append("정기 잔액 ${format(regularDiff)}원\n")
+        sb.append("- 정기 예산 ${format(budget)}원\n")
+        sb.append("- 정기 지출 ${format(regularTotal)}원\n")
+        sb.append("- 정기 잔액 ${format(regularDiff)}원\n")
         sb.append("$regularLine\n\n")
         sb.append("🎲 <b>비정기 예산</b>\n")
-        sb.append("비정기 지출 ${format(irregularTotal)}원\n")
+        sb.append("- 비정기 지출 ${format(irregularTotal)}원\n")
+        sb.append("- 전체 지출 ${format(totalSpend)}원\n")
         sb.append("$totalLine\n\n")
         sb.append("🗂️ <b>정기 지출 내역</b>\n")
-        sb.append("식비 ${format(foodTotal)}원\n")
-        sb.append("생활비 ${format(livingTotal)}원\n\n")
-        sb.append("🔍 <b>주요 정기 지출 상세 내역</b>\n")
+        appendCategorySpend(sb, "식비", foodSpend)
+        appendCategorySpend(sb, "생활비", livingSpend)
+        sb.append("\n🔍 <b>주요 정기 지출 상세 내역</b>\n")
         topItems.forEachIndexed { i, (category, merchant, amount) ->
             sb.append("${i + 1}. [${escapeHtml(category)}] ${escapeHtml(truncate(merchant, 30))} ${format(amount)}\n")
         }
@@ -118,6 +119,12 @@ class TelegramNotificationService(
         sb.append("\nhttps://ourspots.life")
 
         send(sb.toString().trimEnd(), maxLength = WEEKLY_SUMMARY_MAX_LENGTH)
+    }
+
+    private fun appendCategorySpend(sb: StringBuilder, label: String, spend: CategorySpend) {
+        sb.append("- $label ${format(spend.total)}원\n")
+        sb.append("  ㄴ 진우 결제 ${format(spend.jinwooTotal)}원\n")
+        sb.append("  ㄴ 초영 결제 ${format(spend.choyoungTotal)}원\n")
     }
 
     private fun appendItems(sb: StringBuilder, items: List<Pair<String, Long>>) {

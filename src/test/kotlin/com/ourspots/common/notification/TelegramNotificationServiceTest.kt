@@ -140,8 +140,8 @@ class TelegramNotificationServiceTest {
             service.notifyWeeklyExpenseSummary(
                 weekLabel = "8/17~8/23",
                 budget = 500_000,
-                foodTotal = 100_000,
-                livingTotal = 80_000,
+                foodSpend = CategorySpend(total = 100_000, jinwooTotal = 100_000, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 80_000, jinwooTotal = 80_000, choyoungTotal = 0),
                 topItems = listOf(Triple("식비", "이마트", 45_000L), Triple("생활비", "다이소", 80_000L)),
                 irregularTotal = 0,
                 irregularItems = emptyList()
@@ -160,8 +160,8 @@ class TelegramNotificationServiceTest {
             service.notifyWeeklyExpenseSummary(
                 weekLabel = "8/17~8/23",
                 budget = 100_000,
-                foodTotal = 80_000,
-                livingTotal = 50_000,
+                foodSpend = CategorySpend(total = 80_000, jinwooTotal = 80_000, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 50_000, jinwooTotal = 50_000, choyoungTotal = 0),
                 topItems = listOf(Triple("식비", "이마트", 80_000L), Triple("생활비", "다이소", 50_000L)),
                 irregularTotal = 0,
                 irregularItems = emptyList()
@@ -173,14 +173,37 @@ class TelegramNotificationServiceTest {
         }
 
         @Test
+        fun notifyWeeklyExpenseSummary_shouldIncludeJinwooAndChoyoungBreakdownPerCategory() {
+            val service = newService()
+
+            service.notifyWeeklyExpenseSummary(
+                weekLabel = "8/17~8/23",
+                budget = 500_000,
+                foodSpend = CategorySpend(total = 100_000, jinwooTotal = 82_000, choyoungTotal = 18_000),
+                livingSpend = CategorySpend(total = 80_000, jinwooTotal = 60_000, choyoungTotal = 20_000),
+                topItems = emptyList(),
+                irregularTotal = 0,
+                irregularItems = emptyList()
+            )
+
+            val text = capturedText()
+            assertTrue(text.contains("- 식비 100,000원"))
+            assertTrue(text.contains("  ㄴ 진우 결제 82,000원"))
+            assertTrue(text.contains("  ㄴ 초영 결제 18,000원"))
+            assertTrue(text.contains("- 생활비 80,000원"))
+            assertTrue(text.contains("  ㄴ 진우 결제 60,000원"))
+            assertTrue(text.contains("  ㄴ 초영 결제 20,000원"))
+        }
+
+        @Test
         fun notifyWeeklyExpenseSummary_shouldIncludeCategoryTaggedTopItemsInOrder() {
             val service = newService()
 
             service.notifyWeeklyExpenseSummary(
                 weekLabel = "8/17~8/23",
                 budget = 500_000,
-                foodTotal = 100_000,
-                livingTotal = 80_000,
+                foodSpend = CategorySpend(total = 100_000, jinwooTotal = 100_000, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 80_000, jinwooTotal = 80_000, choyoungTotal = 0),
                 topItems = listOf(
                     Triple("생활비", "다이소", 80_000L),
                     Triple("식비", "이마트", 45_000L)
@@ -201,8 +224,8 @@ class TelegramNotificationServiceTest {
             service.notifyWeeklyExpenseSummary(
                 weekLabel = "8/17~8/23",
                 budget = 500_000,
-                foodTotal = 100_000,
-                livingTotal = 0,
+                foodSpend = CategorySpend(total = 100_000, jinwooTotal = 100_000, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
                 topItems = listOf(Triple("식비", "이마트", 100_000L)),
                 irregularTotal = 0,
                 irregularItems = emptyList()
@@ -220,8 +243,8 @@ class TelegramNotificationServiceTest {
             service.notifyWeeklyExpenseSummary(
                 weekLabel = "8/17~8/23",
                 budget = 500_000,
-                foodTotal = 500_000,
-                livingTotal = 0,
+                foodSpend = CategorySpend(total = 500_000, jinwooTotal = 500_000, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
                 topItems = manyItems.take(5).map { Triple("식비", it.first, it.second) },
                 irregularTotal = 0,
                 irregularItems = manyItems

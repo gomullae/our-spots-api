@@ -2,6 +2,7 @@ package com.ourspots.domain.expense.service
 
 import com.ourspots.api.dto.ExpenseRecordRequest
 import com.ourspots.common.exception.NotFoundException
+import com.ourspots.common.notification.CategorySpend
 import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.expense.entity.ExpenseCategory
 import com.ourspots.domain.expense.entity.ExpenseRecord
@@ -218,10 +219,10 @@ class ExpenseServiceTest {
             val records = listOf(
                 createRecord(1L, start, category = ExpenseCategory.FOOD, merchant = "이마트", amount = 45000),
                 createRecord(2L, start, category = ExpenseCategory.FOOD, merchant = "배달의민족", amount = 32000),
-                createRecord(3L, start, category = ExpenseCategory.FOOD, merchant = "스타벅스", amount = 18000),
+                createRecord(3L, start, category = ExpenseCategory.FOOD, merchant = "스타벅스", amount = 18000, paymentMethod = PaymentMethod.CHOYOUNG_PAYMENT),
                 createRecord(4L, start, category = ExpenseCategory.FOOD, merchant = "편의점", amount = 5000),
                 createRecord(5L, start, category = ExpenseCategory.LIVING, merchant = "다이소", amount = 80000),
-                createRecord(6L, start, category = ExpenseCategory.LIVING, merchant = "올리브영", amount = 20000),
+                createRecord(6L, start, category = ExpenseCategory.LIVING, merchant = "올리브영", amount = 20000, paymentMethod = PaymentMethod.CHOYOUNG_PAYMENT),
                 createRecord(7L, start, category = ExpenseCategory.IRREGULAR, merchant = "병원", amount = 50000)
             )
             every { expenseRecordRepository.findByExpenseDateBetween(start, end, false) } returns records
@@ -232,8 +233,10 @@ class ExpenseServiceTest {
                 telegramNotificationService.notifyWeeklyExpenseSummary(
                     weekLabel = "8/17~8/23",
                     budget = 500000,
-                    foodTotal = 100000,
-                    livingTotal = 100000,
+                    // 스타벅스(식비 18,000)는 초영결제라 식비 진우결제=82,000/초영결제=18,000
+                    foodSpend = CategorySpend(total = 100000, jinwooTotal = 82000, choyoungTotal = 18000),
+                    // 올리브영(생활비 20,000)은 초영결제라 생활비 진우결제=80,000/초영결제=20,000
+                    livingSpend = CategorySpend(total = 100000, jinwooTotal = 80000, choyoungTotal = 20000),
                     // 식비/생활비 통합, 금액 큰 순 상위 5개 (편의점 5,000원은 6번째라 제외)
                     topItems = listOf(
                         Triple("생활비", "다이소", 80000L),
