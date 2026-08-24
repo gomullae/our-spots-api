@@ -2,6 +2,7 @@ package com.ourspots.common.exception
 
 import com.ourspots.common.errorlog.ErrorLog
 import com.ourspots.common.errorlog.ErrorLogRepository
+import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.common.response.ApiResponse
 import com.ourspots.common.util.RequestUtils
 import com.ourspots.domain.auth.entity.AccessDeniedLog
@@ -19,7 +20,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException
 @RestControllerAdvice
 class GlobalExceptionHandler(
     private val errorLogRepository: ErrorLogRepository,
-    private val accessDeniedLogRepository: AccessDeniedLogRepository
+    private val accessDeniedLogRepository: AccessDeniedLogRepository,
+    private val telegramNotificationService: TelegramNotificationService
 ) {
 
     private val logger = org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
@@ -55,6 +57,12 @@ class GlobalExceptionHandler(
             } catch (logError: Exception) {
                 logger.error("Failed to persist access denied log", logError)
             }
+            telegramNotificationService.notifyAccessDenied(
+                method = request.method,
+                path = request.requestURI,
+                ipAddress = RequestUtils.getClientIp(request),
+                message = e.message
+            )
         }
         return ApiResponse.error(e.message ?: "Unauthorized")
     }
@@ -115,6 +123,12 @@ class GlobalExceptionHandler(
         } catch (logError: Exception) {
             logger.error("Failed to persist error log", logError)
         }
+        telegramNotificationService.notifyServerError(
+            exceptionType = e.javaClass.simpleName,
+            method = request.method,
+            path = request.requestURI,
+            message = e.message
+        )
         return ApiResponse.error("서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
     }
 }

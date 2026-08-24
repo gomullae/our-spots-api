@@ -2,6 +2,7 @@ package com.ourspots.domain.expense.service
 
 import com.ourspots.api.dto.ExpenseRecordRequest
 import com.ourspots.common.exception.NotFoundException
+import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.expense.entity.ExpenseCategory
 import com.ourspots.domain.expense.entity.ExpenseRecord
 import com.ourspots.domain.expense.entity.PaymentMethod
@@ -26,6 +27,9 @@ class ExpenseServiceTest {
 
     @MockK
     private lateinit var expenseRecordRepository: ExpenseRecordRepository
+
+    @MockK(relaxed = true)
+    private lateinit var telegramNotificationService: TelegramNotificationService
 
     @InjectMockKs
     private lateinit var expenseService: ExpenseService
@@ -199,6 +203,41 @@ class ExpenseServiceTest {
 
             assertThrows<NotFoundException> {
                 expenseService.restoreRecord(99L)
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("sendWeeklySummary")
+    inner class SendWeeklySummary {
+
+        @Test
+        fun sendWeeklySummary_shouldGroupByCategoryAndCapTop3() {
+            val start = LocalDate.of(2026, 8, 17)
+            val end = LocalDate.of(2026, 8, 23)
+            val records = listOf(
+                createRecord(1L, start, category = ExpenseCategory.FOOD, merchant = "이마트", amount = 45000),
+                createRecord(2L, start, category = ExpenseCategory.FOOD, merchant = "배달의민족", amount = 32000),
+                createRecord(3L, start, category = ExpenseCategory.FOOD, merchant = "스타벅스", amount = 18000),
+                createRecord(4L, start, category = ExpenseCategory.FOOD, merchant = "편의점", amount = 5000),
+                createRecord(5L, start, category = ExpenseCategory.LIVING, merchant = "다이소", amount = 80000),
+                createRecord(6L, start, category = ExpenseCategory.IRREGULAR, merchant = "병원", amount = 50000)
+            )
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false) } returns records
+
+            expenseService.sendWeeklySummary(start, end, budget = 500000)
+
+            verify {
+                telegramNotificationService.notifyWeeklyExpenseSummary(
+                    weekLabel = "8/17~8/23",
+                    budget = 500000,
+                    foodTotal = 100000,
+                    foodTop3 = listOf("이마트" to 45000L, "배달의민족" to 32000L, "스타벅스" to 18000L),
+                    livingTotal = 80000,
+                    livingTop3 = listOf("다이소" to 80000L),
+                    irregularTotal = 50000,
+                    irregularItems = listOf("병원" to 50000L)
+                )
             }
         }
     }

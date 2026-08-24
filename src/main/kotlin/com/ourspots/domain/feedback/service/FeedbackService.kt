@@ -2,6 +2,7 @@ package com.ourspots.domain.feedback.service
 
 import com.ourspots.api.dto.FeedbackCreateRequest
 import com.ourspots.common.exception.TooManyRequestsException
+import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.feedback.entity.Feedback
 import com.ourspots.domain.feedback.repository.FeedbackRepository
 import org.springframework.stereotype.Service
@@ -11,7 +12,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 @Service
 class FeedbackService(
-    private val feedbackRepository: FeedbackRepository
+    private val feedbackRepository: FeedbackRepository,
+    private val telegramNotificationService: TelegramNotificationService
 ) {
     // IP별 최근 전송 시각 목록 (분당 횟수 추적)
     private val recentSendsByIp = ConcurrentHashMap<String, MutableList<OffsetDateTime>>()
@@ -43,12 +45,14 @@ class FeedbackService(
             throw TooManyRequestsException("잠시 후 다시 시도해주세요.")
         }
 
+        val content = request.content.trim()
         feedbackRepository.save(
             Feedback(
-                content = request.content.trim(),
+                content = content,
                 ipAddress = clientIp
             )
         )
+        telegramNotificationService.notifyNewFeedback(content)
 
         sends.add(now)
     }

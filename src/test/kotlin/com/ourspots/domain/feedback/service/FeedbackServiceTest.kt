@@ -2,9 +2,12 @@ package com.ourspots.domain.feedback.service
 
 import com.ourspots.api.dto.FeedbackCreateRequest
 import com.ourspots.common.exception.TooManyRequestsException
+import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.feedback.entity.Feedback
 import com.ourspots.domain.feedback.repository.FeedbackRepository
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
@@ -16,6 +19,7 @@ import org.junit.jupiter.api.assertThrows
 class FeedbackServiceTest {
 
     private lateinit var feedbackRepository: FeedbackRepository
+    private lateinit var telegramNotificationService: TelegramNotificationService
     private lateinit var feedbackService: FeedbackService
 
     private val testIp = "192.168.1.1"
@@ -24,10 +28,12 @@ class FeedbackServiceTest {
     @BeforeEach
     fun setUp() {
         feedbackRepository = mockk()
-        feedbackService = FeedbackService(feedbackRepository)
+        telegramNotificationService = mockk()
+        feedbackService = FeedbackService(feedbackRepository, telegramNotificationService)
         every { feedbackRepository.save(any<Feedback>()) } answers {
             firstArg<Feedback>().also { it.prePersist() }
         }
+        every { telegramNotificationService.notifyNewFeedback(any()) } just Runs
     }
 
     @Nested
@@ -50,6 +56,15 @@ class FeedbackServiceTest {
             feedbackService.createFeedback(request, testIp)
 
             verify { feedbackRepository.save(match { it.content == "피드백" }) }
+        }
+
+        @Test
+        fun createFeedback_shouldNotifyTelegramWithTrimmedContent() {
+            val request = FeedbackCreateRequest(content = "  피드백  ")
+
+            feedbackService.createFeedback(request, testIp)
+
+            verify { telegramNotificationService.notifyNewFeedback("피드백") }
         }
 
         @Test

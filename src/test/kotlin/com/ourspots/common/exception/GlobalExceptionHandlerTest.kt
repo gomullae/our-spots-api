@@ -2,6 +2,7 @@ package com.ourspots.common.exception
 
 import com.ourspots.common.errorlog.ErrorLog
 import com.ourspots.common.errorlog.ErrorLogRepository
+import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.auth.entity.AccessDeniedLog
 import com.ourspots.domain.auth.repository.AccessDeniedLogRepository
 import io.mockk.MockKAnnotations
@@ -24,6 +25,9 @@ class GlobalExceptionHandlerTest {
 
     @MockK
     private lateinit var accessDeniedLogRepository: AccessDeniedLogRepository
+
+    @MockK(relaxed = true)
+    private lateinit var telegramNotificationService: TelegramNotificationService
 
     @InjectMockKs
     private lateinit var globalExceptionHandler: GlobalExceptionHandler
@@ -106,5 +110,50 @@ class GlobalExceptionHandlerTest {
         )
 
         assertEquals(false, response.success)
+    }
+
+    @Test
+    fun handleException_shouldNotifyTelegram() {
+        every { errorLogRepository.save(any<ErrorLog>()) } answers { firstArg() }
+
+        globalExceptionHandler.handleException(IllegalStateException("boom"), mockRequest(method = "POST", uri = "/api/places"))
+
+        verify {
+            telegramNotificationService.notifyServerError(
+                exceptionType = "IllegalStateException",
+                method = "POST",
+                path = "/api/places",
+                message = "boom"
+            )
+        }
+    }
+
+    @Test
+    fun handleUnauthorizedException_shouldNotifyTelegram() {
+        every { accessDeniedLogRepository.save(any<AccessDeniedLog>()) } answers { firstArg() }
+
+        globalExceptionHandler.handleUnauthorizedException(
+            UnauthorizedException("인증이 필요합니다. 로그인해주세요."),
+            mockRequest(method = "GET", uri = "/api/weights")
+        )
+
+        verify {
+            telegramNotificationService.notifyAccessDenied(
+                method = "GET",
+                path = "/api/weights",
+                ipAddress = "127.0.0.1",
+                message = "인증이 필요합니다. 로그인해주세요."
+            )
+        }
+    }
+
+    @Test
+    fun handleUnauthorizedException_whenLoginEndpoint_shouldNotNotifyTelegram() {
+        globalExceptionHandler.handleUnauthorizedException(
+            UnauthorizedException("권한이 없습니다. 관리자 비밀번호를 확인해주세요"),
+            mockRequest(method = "POST", uri = "/api/auth/login")
+        )
+
+        verify(exactly = 0) { telegramNotificationService.notifyAccessDenied(any(), any(), any(), any()) }
     }
 }

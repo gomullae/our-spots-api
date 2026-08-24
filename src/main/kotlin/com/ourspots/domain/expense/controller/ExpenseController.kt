@@ -46,4 +46,14 @@ class ExpenseController(
     @PostMapping("/{id}/restore")
     fun restoreRecord(@PathVariable id: Long): ApiResponse<ExpenseRecordResponse> =
         ApiResponse.success(expenseService.restoreRecord(id))
+
+    @PostMapping("/weekly-summary")
+    fun sendWeeklySummary(
+        @RequestParam startDate: LocalDate,
+        @RequestParam endDate: LocalDate,
+        @RequestParam budget: Long
+    ): ApiResponse<Unit> {
+        expenseService.sendWeeklySummary(startDate, endDate, budget)
+        return ApiResponse.success(Unit)
+    }
 }
