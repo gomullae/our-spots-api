@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.http.HttpEntity
 import org.springframework.web.client.RestTemplate
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -16,15 +17,17 @@ class TelegramNotificationServiceTest {
 
     private val restTemplate: RestTemplate = mockk(relaxed = true)
 
-    private fun newService(botToken: String = "test-token", chatId: String = "test-chat-id") =
-        TelegramNotificationService(botToken, chatId, restTemplate)
+    private fun newService(botToken: String = "test-token", chatId: String = "test-chat-id", expenseChatId: String = "") =
+        TelegramNotificationService(botToken, chatId, expenseChatId, restTemplate)
 
     @Suppress("UNCHECKED_CAST")
-    private fun capturedText(): String {
+    private fun capturedBody(): Map<String, Any> {
         val slot = slot<HttpEntity<Map<String, Any>>>()
         verify { restTemplate.postForObject(any<String>(), capture(slot), String::class.java) }
-        return slot.captured.body!!["text"] as String
+        return slot.captured.body!!
     }
+
+    private fun capturedText(): String = capturedBody()["text"] as String
 
     @Nested
     @DisplayName("설정 여부에 따른 발송 스킵")
@@ -132,6 +135,40 @@ class TelegramNotificationServiceTest {
     @Nested
     @DisplayName("notifyWeeklyExpenseSummary")
     inner class NotifyWeeklyExpenseSummary {
+
+        @Test
+        fun notifyWeeklyExpenseSummary_whenExpenseChatIdConfigured_shouldSendThere() {
+            val service = newService(chatId = "default-chat", expenseChatId = "expense-group-chat")
+
+            service.notifyWeeklyExpenseSummary(
+                weekLabel = "8/17~8/23",
+                budget = 500_000,
+                foodSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                topItems = emptyList(),
+                irregularTotal = 0,
+                irregularItems = emptyList()
+            )
+
+            assertEquals("expense-group-chat", capturedBody()["chat_id"])
+        }
+
+        @Test
+        fun notifyWeeklyExpenseSummary_whenExpenseChatIdBlank_shouldFallBackToDefaultChat() {
+            val service = newService(chatId = "default-chat", expenseChatId = "")
+
+            service.notifyWeeklyExpenseSummary(
+                weekLabel = "8/17~8/23",
+                budget = 500_000,
+                foodSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                topItems = emptyList(),
+                irregularTotal = 0,
+                irregularItems = emptyList()
+            )
+
+            assertEquals("default-chat", capturedBody()["chat_id"])
+        }
 
         @Test
         fun notifyWeeklyExpenseSummary_whenUnderBudget_shouldShowSavedMessage() {

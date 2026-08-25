@@ -20,6 +20,8 @@ class TelegramNotificationService(
     @Value("\${app.telegram.bot-token}") private val botToken: String,
     // 나중에 가계부 알림만 배우자 공동 채팅방으로 분리할 수 있어서 이름을 defaultChatId로 — send()가 override 받을 수 있게 열어둠
     @Value("\${app.telegram.chat-id}") private val defaultChatId: String,
+    // 가계부 주간 정산 전용 — 배우자와 공동으로 보는 그룹 채팅방. 비어있으면(설정 전) defaultChatId로 폴백
+    @Value("\${app.telegram.expense-chat-id}") private val expenseChatId: String,
     // 기본값을 생성자 파라미터로 열어둬서 테스트에서 mock RestTemplate을 주입할 수 있게 함 (컨텍스트에 RestTemplate 빈이 없으면 Spring이 이 기본값을 그대로 사용)
     private val restTemplate: RestTemplate = RestTemplateFactory.create()
 ) {
@@ -113,7 +115,7 @@ class TelegramNotificationService(
         }
         sb.append("\nhttps://ourspots.life")
 
-        send(sb.toString().trimEnd(), maxLength = WEEKLY_SUMMARY_MAX_LENGTH)
+        send(sb.toString().trimEnd(), maxLength = WEEKLY_SUMMARY_MAX_LENGTH, chatId = expenseChatId.ifBlank { defaultChatId })
     }
 
     private fun appendCategorySpend(sb: StringBuilder, label: String, spend: CategorySpend) {
