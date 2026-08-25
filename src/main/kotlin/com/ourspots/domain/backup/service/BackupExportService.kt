@@ -32,6 +32,10 @@ class BackupExportService(
         private val DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd")
     }
 
+    // period == RECENT_3_MONTHS일 때만 cutoff 이전 행을 걸러냄 — 7개 테이블 분기 모두가 공유하는 필터 조건
+    private fun <T> List<T>.filterByPeriod(period: BackupPeriod, cutoff: LocalDate, createdAtOf: (T) -> LocalDate): List<T> =
+        if (period == BackupPeriod.ALL) this else filter { !createdAtOf(it).isBefore(cutoff) }
+
     // 조회용(로그 이력 화면)과 엑셀 백업이 같은 데이터를 공유 — 날짜/시각 값은 여기서 문자열로 미리 변환해
     // JSON 직렬화든 엑셀 셀 기록이든 후속 소비자가 타입 분기 없이 그대로 쓸 수 있게 함
     fun fetchTableData(table: BackupTable, period: BackupPeriod): TableData {
@@ -41,7 +45,7 @@ class BackupExportService(
             BackupTable.PLACES -> TableData(
                 listOf("id", "name", "type", "address", "latitude", "longitude", "description", "grade", "googlePlaceId", "googleRating", "googleRatingsTotal", "createdAt", "updatedAt", "deletedAt"),
                 placeRepository.findAllIncludingDeleted()
-                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(
@@ -55,7 +59,7 @@ class BackupExportService(
             BackupTable.EXPENSE_RECORDS -> TableData(
                 listOf("id", "expenseDate", "paymentMethod", "category", "merchant", "amount", "createdAt", "updatedAt", "deletedAt"),
                 expenseRecordRepository.findAllIncludingDeleted()
-                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(
@@ -68,7 +72,7 @@ class BackupExportService(
             BackupTable.WEIGHT_RECORDS -> TableData(
                 listOf("id", "recordedDate", "weightKg", "memo", "createdAt", "updatedAt", "deletedAt"),
                 weightRecordRepository.findAllIncludingDeleted()
-                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(it.id, it.recordedDate.toString(), it.weightKg, it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString())
@@ -78,7 +82,7 @@ class BackupExportService(
             BackupTable.LOGIN_ATTEMPTS -> TableData(
                 listOf("id", "ipAddress", "userAgent", "endpoint", "attemptCount", "blocked", "createdAt"),
                 loginAttemptRepository.findAll()
-                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(it.id, it.ipAddress, it.userAgent, it.endpoint, it.attemptCount, it.blocked, it.createdAt.toString())
@@ -88,7 +92,7 @@ class BackupExportService(
             BackupTable.FEEDBACKS -> TableData(
                 listOf("id", "content", "ipAddress", "source", "createdAt"),
                 feedbackRepository.findAll()
-                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(it.id, it.content, it.ipAddress, it.source, it.createdAt.toString())
@@ -98,7 +102,7 @@ class BackupExportService(
             BackupTable.ERROR_LOGS -> TableData(
                 listOf("id", "exceptionType", "message", "method", "path", "createdAt"),
                 errorLogRepository.findAll()
-                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(it.id, it.exceptionType, it.message, it.method, it.path, it.createdAt.toString())
@@ -108,7 +112,7 @@ class BackupExportService(
             BackupTable.ACCESS_DENIED_LOGS -> TableData(
                 listOf("id", "ipAddress", "method", "path", "message", "userAgent", "createdAt"),
                 accessDeniedLogRepository.findAll()
-                    .filter { period == BackupPeriod.ALL || !it.createdAt.toLocalDate().isBefore(cutoff) }
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(it.id, it.ipAddress, it.method, it.path, it.message, it.userAgent, it.createdAt.toString())

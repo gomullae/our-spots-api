@@ -1,11 +1,11 @@
 package com.ourspots.common.notification
 
+import com.ourspots.common.util.RestTemplateFactory
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
-import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestTemplate
 import java.time.Duration
@@ -21,12 +21,7 @@ class TelegramNotificationService(
     // 나중에 가계부 알림만 배우자 공동 채팅방으로 분리할 수 있어서 이름을 defaultChatId로 — send()가 override 받을 수 있게 열어둠
     @Value("\${app.telegram.chat-id}") private val defaultChatId: String,
     // 기본값을 생성자 파라미터로 열어둬서 테스트에서 mock RestTemplate을 주입할 수 있게 함 (컨텍스트에 RestTemplate 빈이 없으면 Spring이 이 기본값을 그대로 사용)
-    private val restTemplate: RestTemplate = RestTemplate().apply {
-        requestFactory = SimpleClientHttpRequestFactory().apply {
-            setConnectTimeout(Duration.ofSeconds(5))
-            setReadTimeout(Duration.ofSeconds(5))
-        }
-    }
+    private val restTemplate: RestTemplate = RestTemplateFactory.create()
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 

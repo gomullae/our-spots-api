@@ -46,10 +46,11 @@ class GlobalExceptionHandler(
         // /api/auth/login의 비밀번호 오류는 login_attempts가 이미 기록하므로 여기서는 중복 기록하지 않음 —
         // 이 테이블은 "토큰 없이/만료된 토큰으로 보호된 리소스에 접근"한 시도만 추적하는 용도
         if (request.requestURI != "/api/auth/login") {
+            val clientIp = RequestUtils.getClientIp(request)
             try {
                 accessDeniedLogRepository.save(
                     AccessDeniedLog(
-                        ipAddress = RequestUtils.getClientIp(request),
+                        ipAddress = clientIp,
                         method = request.method,
                         path = request.requestURI,
                         message = e.message,
@@ -62,7 +63,7 @@ class GlobalExceptionHandler(
             telegramNotificationService.notifyAccessDenied(
                 method = request.method,
                 path = request.requestURI,
-                ipAddress = RequestUtils.getClientIp(request),
+                ipAddress = clientIp,
                 message = e.message
             )
         }
