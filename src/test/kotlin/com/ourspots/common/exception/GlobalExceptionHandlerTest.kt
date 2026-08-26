@@ -6,8 +6,6 @@ import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.auth.entity.AccessDeniedLog
 import com.ourspots.domain.auth.repository.AccessDeniedLogRepository
 import io.mockk.MockKAnnotations
-import io.mockk.any
-import io.mockk.capture
 import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK

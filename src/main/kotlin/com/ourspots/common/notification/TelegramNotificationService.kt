@@ -203,8 +203,9 @@ class TelegramNotificationService(
         }
     }
 
+    // take(maxLength) + "…"였다면 결과 길이가 maxLength+1이 되는 오프바이원 버그가 있었음 — "…"까지 포함해서 총 길이가 maxLength를 넘지 않게 수정
     private fun truncate(value: String, maxLength: Int): String =
-        if (value.length > maxLength) value.take(maxLength) + "…" else value
+        if (value.length > maxLength) value.take(maxLength - 1) + "…" else value
 
     private fun stripHtml(value: String): String =
         value.replace(Regex("</?[a-zA-Z][^>]*>"), "")
