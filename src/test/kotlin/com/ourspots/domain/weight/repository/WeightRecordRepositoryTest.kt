@@ -73,6 +73,47 @@ class WeightRecordRepositoryTest {
     }
 
     @Nested
+    @DisplayName("findMaxUpdatedAt")
+    inner class FindMaxUpdatedAt {
+
+        @Test
+        fun findMaxUpdatedAt_whenNoRecords_shouldReturnNull() {
+            val result = weightRecordRepository.findMaxUpdatedAt()
+
+            assertNull(result)
+        }
+
+        @Test
+        fun findMaxUpdatedAt_shouldReturnLatestUpdatedAtAcrossRecords() {
+            val first = createRecord(LocalDate.of(2026, 8, 1), 70.0)
+            createRecord(LocalDate.of(2026, 8, 19), 71.0)
+            entityManager.clear()
+
+            val toUpdate = weightRecordRepository.findById(first.id).get()
+            toUpdate.weightKg = 72.0
+            weightRecordRepository.save(toUpdate)
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = weightRecordRepository.findMaxUpdatedAt()
+
+            assertEquals(toUpdate.updatedAt, result)
+        }
+
+        @Test
+        fun findMaxUpdatedAt_shouldIgnoreSoftDeletedRecords() {
+            val record = createRecord(LocalDate.of(2026, 8, 19), 70.0)
+            weightRecordRepository.delete(record)
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = weightRecordRepository.findMaxUpdatedAt()
+
+            assertNull(result)
+        }
+    }
+
+    @Nested
     @DisplayName("Soft Delete")
     inner class SoftDelete {
 

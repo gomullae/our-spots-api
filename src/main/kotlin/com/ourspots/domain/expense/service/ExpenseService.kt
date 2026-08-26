@@ -1,5 +1,6 @@
 package com.ourspots.domain.expense.service
 
+import com.ourspots.api.dto.ExpenseMetaResponse
 import com.ourspots.api.dto.ExpenseRecordRequest
 import com.ourspots.api.dto.ExpenseRecordResponse
 import com.ourspots.common.exception.NotFoundException
@@ -29,6 +30,10 @@ class ExpenseService(
     fun getRecords(startDate: LocalDate, endDate: LocalDate, includeDeleted: Boolean = false): List<ExpenseRecordResponse> =
         expenseRecordRepository.findByExpenseDateBetween(startDate, endDate, includeDeleted)
             .map { ExpenseRecordResponse.from(it) }
+
+    // 프론트가 로컬 캐시를 그대로 써도 되는지 확인하는 용도 — count(등록/삭제 감지) + lastModified(수정 감지) 조합
+    fun getMeta(): ExpenseMetaResponse =
+        ExpenseMetaResponse(count = expenseRecordRepository.count(), lastModified = expenseRecordRepository.findMaxUpdatedAt())
 
     @Transactional
     fun createRecord(request: ExpenseRecordRequest): ExpenseRecordResponse {

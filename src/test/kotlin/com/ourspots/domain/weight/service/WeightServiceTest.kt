@@ -36,6 +36,34 @@ class WeightServiceTest {
     )
 
     @Nested
+    @DisplayName("getMeta")
+    inner class GetMeta {
+
+        @Test
+        fun getMeta_shouldReturnCountAndLastModified() {
+            val lastModified = java.time.LocalDateTime.of(2026, 8, 20, 9, 0)
+            every { weightRecordRepository.count() } returns 3L
+            every { weightRecordRepository.findMaxUpdatedAt() } returns lastModified
+
+            val result = weightService.getMeta()
+
+            assertEquals(3L, result.count)
+            assertEquals(lastModified, result.lastModified)
+        }
+
+        @Test
+        fun getMeta_whenNoRecords_shouldReturnZeroCountAndNullLastModified() {
+            every { weightRecordRepository.count() } returns 0L
+            every { weightRecordRepository.findMaxUpdatedAt() } returns null
+
+            val result = weightService.getMeta()
+
+            assertEquals(0L, result.count)
+            assertEquals(null, result.lastModified)
+        }
+    }
+
+    @Nested
     @DisplayName("getAllRecords")
     inner class GetAllRecords {
 

@@ -1,5 +1,6 @@
 package com.ourspots.domain.weight.service
 
+import com.ourspots.api.dto.WeightMetaResponse
 import com.ourspots.api.dto.WeightRecordResponse
 import com.ourspots.api.dto.WeightRecordUpsertRequest
 import com.ourspots.common.exception.NotFoundException
@@ -24,6 +25,10 @@ class WeightService(
     @Cacheable("weightRecords")
     fun getAllRecords(): List<WeightRecordResponse> =
         weightRecordRepository.findAllByOrderByRecordedDateDesc().map { WeightRecordResponse.from(it) }
+
+    // 프론트가 로컬 캐시를 그대로 써도 되는지 확인하는 용도 — 서버 Caffeine 캐시(getAllRecords)와 무관하게 항상 최신값을 반환
+    fun getMeta(): WeightMetaResponse =
+        WeightMetaResponse(count = weightRecordRepository.count(), lastModified = weightRecordRepository.findMaxUpdatedAt())
 
     @Transactional
     @CacheEvict("weightRecords", allEntries = true)

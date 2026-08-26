@@ -4,6 +4,7 @@ import com.ourspots.domain.expense.entity.ExpenseRecord
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 interface ExpenseRecordRepository : JpaRepository<ExpenseRecord, Long> {
     // @SQLRestriction("deleted_at IS NULL")은 네이티브 쿼리에는 적용되지 않음 → includeDeleted=true로 소프트 삭제된 것도 조회 가능("이력" 탭용)
@@ -20,4 +21,8 @@ interface ExpenseRecordRepository : JpaRepository<ExpenseRecord, Long> {
     // 백업 다운로드용 — PlaceRepository.findAllIncludingDeleted()와 동일 패턴
     @Query("SELECT * FROM expense_records ORDER BY id", nativeQuery = true)
     fun findAllIncludingDeleted(): List<ExpenseRecord>
+
+    // 프론트 캐시 검증(/api/expenses/meta)용 — JPQL이라 @SQLRestriction(deleted_at IS NULL)이 자동 적용됨
+    @Query("SELECT MAX(e.updatedAt) FROM ExpenseRecord e")
+    fun findMaxUpdatedAt(): LocalDateTime?
 }

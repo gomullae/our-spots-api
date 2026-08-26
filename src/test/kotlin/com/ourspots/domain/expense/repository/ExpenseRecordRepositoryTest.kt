@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDate
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @DataJpaTest
@@ -87,6 +88,47 @@ class ExpenseRecordRepositoryTest {
 
             assertEquals(1, result.size)
             assertEquals(record.id, result[0].id)
+        }
+    }
+
+    @Nested
+    @DisplayName("findMaxUpdatedAt")
+    inner class FindMaxUpdatedAt {
+
+        @Test
+        fun findMaxUpdatedAt_whenNoRecords_shouldReturnNull() {
+            val result = expenseRecordRepository.findMaxUpdatedAt()
+
+            assertNull(result)
+        }
+
+        @Test
+        fun findMaxUpdatedAt_shouldReturnLatestUpdatedAtAcrossRecords() {
+            val first = createRecord(LocalDate.of(2026, 8, 1))
+            createRecord(LocalDate.of(2026, 8, 19))
+            entityManager.clear()
+
+            val toUpdate = expenseRecordRepository.findById(first.id).get()
+            toUpdate.amount = 20000
+            expenseRecordRepository.save(toUpdate)
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = expenseRecordRepository.findMaxUpdatedAt()
+
+            assertEquals(toUpdate.updatedAt, result)
+        }
+
+        @Test
+        fun findMaxUpdatedAt_shouldIgnoreSoftDeletedRecords() {
+            val record = createRecord(LocalDate.of(2026, 8, 19))
+            expenseRecordRepository.delete(record)
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = expenseRecordRepository.findMaxUpdatedAt()
+
+            assertNull(result)
         }
     }
 

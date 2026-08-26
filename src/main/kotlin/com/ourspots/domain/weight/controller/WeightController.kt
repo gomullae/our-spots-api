@@ -1,5 +1,6 @@
 package com.ourspots.domain.weight.controller
 
+import com.ourspots.api.dto.WeightMetaResponse
 import com.ourspots.api.dto.WeightRecordResponse
 import com.ourspots.api.dto.WeightRecordUpsertRequest
 import com.ourspots.common.response.ApiResponse
@@ -17,6 +18,11 @@ class WeightController(
     @GetMapping
     fun getAllRecords(): ApiResponse<List<WeightRecordResponse>> =
         ApiResponse.success(weightService.getAllRecords())
+
+    // 프론트가 로컬(localStorage) 캐시를 그대로 써도 되는지 확인하는 가벼운 엔드포인트 — 전체 목록 대신 count/lastModified만 반환
+    @GetMapping("/meta")
+    fun getMeta(): ApiResponse<WeightMetaResponse> =
+        ApiResponse.success(weightService.getMeta())
 
     @PostMapping
     fun upsertRecord(

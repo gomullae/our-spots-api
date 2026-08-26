@@ -6,6 +6,12 @@ import com.ourspots.domain.expense.entity.PaymentMethod
 import java.time.LocalDate
 import java.time.LocalDateTime
 
+// 프론트 로컬 캐시 검증용 — count/lastModified 조합으로 전체 목록을 안 내려받고도 변경 여부만 가볍게 확인
+data class ExpenseMetaResponse(
+    val count: Long,
+    val lastModified: LocalDateTime?
+)
+
 data class ExpenseRecordResponse(
     val id: Long,
     val expenseDate: LocalDate,

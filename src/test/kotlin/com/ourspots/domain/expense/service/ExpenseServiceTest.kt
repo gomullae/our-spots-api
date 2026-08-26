@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.util.*
 import kotlin.test.assertEquals
 
@@ -55,6 +56,34 @@ class ExpenseServiceTest {
         merchant = merchant,
         amount = amount
     )
+
+    @Nested
+    @DisplayName("getMeta")
+    inner class GetMeta {
+
+        @Test
+        fun getMeta_shouldReturnCountAndLastModified() {
+            val lastModified = LocalDateTime.of(2026, 8, 20, 9, 0)
+            every { expenseRecordRepository.count() } returns 3L
+            every { expenseRecordRepository.findMaxUpdatedAt() } returns lastModified
+
+            val result = expenseService.getMeta()
+
+            assertEquals(3L, result.count)
+            assertEquals(lastModified, result.lastModified)
+        }
+
+        @Test
+        fun getMeta_whenNoRecords_shouldReturnZeroCountAndNullLastModified() {
+            every { expenseRecordRepository.count() } returns 0L
+            every { expenseRecordRepository.findMaxUpdatedAt() } returns null
+
+            val result = expenseService.getMeta()
+
+            assertEquals(0L, result.count)
+            assertEquals(null, result.lastModified)
+        }
+    }
 
     @Nested
     @DisplayName("getRecords")

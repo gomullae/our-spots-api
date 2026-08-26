@@ -90,6 +90,51 @@ class WeightControllerIntegrationTest {
     }
 
     @Nested
+    @DisplayName("GET /api/weights/meta")
+    inner class GetMeta {
+
+        @Test
+        fun getMeta_whenNotAuthenticated_shouldReturn401() {
+            mockMvc.perform(get("/api/weights/meta"))
+                .andExpect(status().isUnauthorized)
+        }
+
+        @Test
+        fun getMeta_whenNoRecords_shouldReturnZeroCountAndNullLastModified() {
+            mockMvc.perform(
+                get("/api/weights/meta").header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.count").value(0))
+                .andExpect(jsonPath("$.data.lastModified").doesNotExist())
+        }
+
+        @Test
+        fun getMeta_whenAuthenticated_shouldReturnCountAndLastModified() {
+            createTestRecord(LocalDate.of(2026, 8, 19), 70.9)
+
+            mockMvc.perform(
+                get("/api/weights/meta").header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.count").value(1))
+                .andExpect(jsonPath("$.data.lastModified").exists())
+        }
+
+        @Test
+        fun getMeta_afterDelete_shouldReflectDecreasedCount() {
+            val record = createTestRecord(LocalDate.of(2026, 8, 19), 70.9)
+            weightRecordRepository.delete(record)
+
+            mockMvc.perform(
+                get("/api/weights/meta").header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.count").value(0))
+        }
+    }
+
+    @Nested
     @DisplayName("POST /api/weights")
     inner class UpsertRecord {
 
