@@ -17,6 +17,9 @@ import com.ourspots.domain.feedback.repository.FeedbackRepository
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
 import com.ourspots.domain.place.repository.PlaceRepository
+import com.ourspots.domain.schedule.entity.ScheduleCategory
+import com.ourspots.domain.schedule.entity.ScheduleEvent
+import com.ourspots.domain.schedule.repository.ScheduleEventRepository
 import com.ourspots.domain.weight.entity.WeightRecord
 import com.ourspots.domain.weight.repository.WeightRecordRepository
 import io.mockk.MockKAnnotations
@@ -56,6 +59,9 @@ class BackupExportServiceTest {
 
     @MockK
     private lateinit var accessDeniedLogRepository: AccessDeniedLogRepository
+
+    @MockK
+    private lateinit var scheduleEventRepository: ScheduleEventRepository
 
     @InjectMockKs
     private lateinit var backupExportService: BackupExportService
@@ -175,6 +181,21 @@ class BackupExportServiceTest {
 
             assertEquals(listOf("id", "ipAddress", "method", "path", "message", "userAgent", "createdAt"), result.headers)
             assertEquals(listOf(1L, "1.2.3.4", "GET", "/api/weights", "Unauthorized", "curl"), result.rows[0].take(6))
+        }
+
+        @Test
+        fun fetchTableData_whenScheduleEvents_shouldMapAllFields() {
+            val startAt = LocalDateTime.of(2026, 8, 19, 10, 0)
+            val event = ScheduleEvent(
+                id = 1, title = "커피약속", category = ScheduleCategory.JINWOO,
+                startAt = startAt, endAt = startAt, allDay = false, memo = "1시간"
+            )
+            every { scheduleEventRepository.findAllIncludingDeleted() } returns listOf(event)
+
+            val result = backupExportService.fetchTableData(BackupTable.SCHEDULE_EVENTS, BackupPeriod.ALL)
+
+            assertEquals(listOf("id", "title", "category", "startAt", "endAt", "allDay", "memo", "createdAt", "updatedAt", "deletedAt"), result.headers)
+            assertEquals(listOf(1L, "커피약속", "JINWOO", startAt.toString(), startAt.toString(), false, "1시간"), result.rows[0].take(7))
         }
     }
 

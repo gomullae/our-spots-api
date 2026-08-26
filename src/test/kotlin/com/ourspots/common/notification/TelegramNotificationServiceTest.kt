@@ -17,8 +17,12 @@ class TelegramNotificationServiceTest {
 
     private val restTemplate: RestTemplate = mockk(relaxed = true)
 
-    private fun newService(botToken: String = "test-token", chatId: String = "test-chat-id", expenseChatId: String = "") =
-        TelegramNotificationService(botToken, chatId, expenseChatId, restTemplate)
+    private fun newService(
+        botToken: String = "test-token",
+        chatId: String = "test-chat-id",
+        expenseChatId: String = "",
+        scheduleChatId: String = ""
+    ) = TelegramNotificationService(botToken, chatId, expenseChatId, scheduleChatId, restTemplate)
 
     @Suppress("UNCHECKED_CAST")
     private fun capturedBody(): Map<String, Any> {
@@ -291,6 +295,115 @@ class TelegramNotificationServiceTest {
             // 안전망 truncate가 발동하면 태그가 통째로 제거되므로 닫히지 않은 태그가 남지 않아야 함
             assertFalse(text.contains("<b>") || text.contains("</b>"))
             assertTrue(text.length <= 800)
+        }
+    }
+
+    @Nested
+    @DisplayName("notifyScheduleCreated")
+    inner class NotifyScheduleCreated {
+
+        @Test
+        fun notifyScheduleCreated_shouldIncludeTitleCategoryAndDateTime() {
+            val service = newService()
+
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+
+            val text = capturedText()
+            assertTrue(text.contains("새 일정 등록"))
+            assertTrue(text.contains("커피약속"))
+            assertTrue(text.contains("진우 일정"))
+            assertTrue(text.contains("8월 15일(토) 오후 12:00"))
+        }
+
+        @Test
+        fun notifyScheduleCreated_whenMemoNull_shouldOmitMemoLine() {
+            val service = newService()
+
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+
+            assertFalse(capturedText().contains("메모"))
+        }
+
+        @Test
+        fun notifyScheduleCreated_whenScheduleChatIdConfigured_shouldSendThere() {
+            val service = newService(chatId = "default-chat", scheduleChatId = "schedule-group-chat")
+
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+
+            assertEquals("schedule-group-chat", capturedBody()["chat_id"])
+        }
+
+        @Test
+        fun notifyScheduleCreated_whenScheduleChatIdBlank_shouldFallBackToDefaultChat() {
+            val service = newService(chatId = "default-chat", scheduleChatId = "")
+
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+
+            assertEquals("default-chat", capturedBody()["chat_id"])
+        }
+    }
+
+    @Nested
+    @DisplayName("notifyScheduleUpdated")
+    inner class NotifyScheduleUpdated {
+
+        @Test
+        fun notifyScheduleUpdated_whenTitleChanged_shouldShowArrow() {
+            val service = newService()
+            val before = ScheduleEventSummary("곤충이야기 체험", "공유 일정", "8월 15일(토) 오후 12:00", null)
+            val after = ScheduleEventSummary("벌레 관찰 체험", "공유 일정", "8월 15일(토) 오후 12:00", null)
+
+            service.notifyScheduleUpdated(before, after)
+
+            val text = capturedText()
+            assertTrue(text.contains("제목: 곤충이야기 체험 → 벌레 관찰 체험"))
+            assertTrue(text.contains("구분: 공유 일정"))
+            assertFalse(text.contains("구분: 공유 일정 → 공유 일정"))
+        }
+
+        @Test
+        fun notifyScheduleUpdated_whenNothingChanged_shouldNotSend() {
+            val service = newService()
+            val summary = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null)
+
+            service.notifyScheduleUpdated(summary, summary.copy())
+
+            verify(exactly = 0) { restTemplate.postForObject(any<String>(), any(), String::class.java) }
+        }
+
+        @Test
+        fun notifyScheduleUpdated_whenMemoAdded_shouldShowPlaceholderForBefore() {
+            val service = newService()
+            val before = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null)
+            val after = before.copy(memo = "1시간반")
+
+            service.notifyScheduleUpdated(before, after)
+
+            assertTrue(capturedText().contains("메모: (없음) → 1시간반"))
+        }
+
+        @Test
+        fun notifyScheduleUpdated_whenMemoUnchanged_shouldShowPlainValue() {
+            val service = newService()
+            val before = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", "메모")
+            val after = before.copy(title = "변경된 제목")
+
+            service.notifyScheduleUpdated(before, after)
+
+            val text = capturedText()
+            assertTrue(text.contains("메모: 메모\n") || text.trimEnd().endsWith("메모: 메모"))
+            assertFalse(text.contains("메모: 메모 →"))
+        }
+
+        @Test
+        fun notifyScheduleUpdated_whenMemoRemoved_shouldShowPlaceholderForAfter() {
+            val service = newService()
+            val before = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", "1시간반")
+            val after = before.copy(memo = null)
+
+            service.notifyScheduleUpdated(before, after)
+
+            assertTrue(capturedText().contains("메모: 1시간반 → (없음)"))
         }
     }
 }

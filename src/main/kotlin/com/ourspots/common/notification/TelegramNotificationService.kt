@@ -15,6 +15,9 @@ import java.util.concurrent.ConcurrentHashMap
 // 카테고리(식비/생활비)별 지출 합계 + 결제자(진우/초영) 구분 합계
 data class CategorySpend(val total: Long, val jinwooTotal: Long, val choyoungTotal: Long)
 
+// 일정 알림용 사람이 읽는 형태로 이미 가공된 값 — ScheduleCategory 등 도메인 타입을 common 계층에 끌어들이지 않기 위해 라벨/날짜 포맷은 호출부(ScheduleService)가 만들어서 넘김
+data class ScheduleEventSummary(val title: String, val categoryLabel: String, val dateTimeText: String, val memo: String?)
+
 @Service
 class TelegramNotificationService(
     @Value("\${app.telegram.bot-token}") private val botToken: String,
@@ -22,6 +25,8 @@ class TelegramNotificationService(
     @Value("\${app.telegram.chat-id}") private val defaultChatId: String,
     // 가계부 주간 정산 전용 — 배우자와 공동으로 보는 그룹 채팅방. 비어있으면(설정 전) defaultChatId로 폴백
     @Value("\${app.telegram.expense-chat-id}") private val expenseChatId: String,
+    // 일정 등록/수정 알림 전용 — 배우자와 공동으로 보는 그룹 채팅방. 비어있으면(설정 전) defaultChatId로 폴백
+    @Value("\${app.telegram.schedule-chat-id}") private val scheduleChatId: String,
     // 기본값을 생성자 파라미터로 열어둬서 테스트에서 mock RestTemplate을 주입할 수 있게 함 (컨텍스트에 RestTemplate 빈이 없으면 Spring이 이 기본값을 그대로 사용)
     private val restTemplate: RestTemplate = RestTemplateFactory.create()
 ) {
@@ -117,6 +122,47 @@ class TelegramNotificationService(
 
         send(sb.toString().trimEnd(), maxLength = WEEKLY_SUMMARY_MAX_LENGTH, chatId = expenseChatId.ifBlank { defaultChatId })
     }
+
+    fun notifyScheduleCreated(summary: ScheduleEventSummary) {
+        val sb = StringBuilder()
+        sb.append("🆕 <b>새 일정 등록</b>\n")
+        sb.append("제목: ${escapeHtml(truncate(summary.title, 60))}\n")
+        sb.append("구분: ${escapeHtml(summary.categoryLabel)}\n")
+        sb.append("일시: ${escapeHtml(summary.dateTimeText)}\n")
+        summary.memo?.let { sb.append("메모: ${escapeHtml(truncate(it, 150))}\n") }
+        send(sb.toString().trimEnd(), chatId = scheduleChatId.ifBlank { defaultChatId })
+    }
+
+    // 안 바뀐 필드는 값만, 바뀐 필드는 "이전 → 이후"로 표기 — 아무것도 안 바뀌었으면 알림 자체를 보내지 않음
+    fun notifyScheduleUpdated(before: ScheduleEventSummary, after: ScheduleEventSummary) {
+        val titleLine = diffText(escapeHtml(truncate(before.title, 60)), escapeHtml(truncate(after.title, 60)))
+        val categoryLine = diffText(escapeHtml(before.categoryLabel), escapeHtml(after.categoryLabel))
+        val dateTimeLine = diffText(escapeHtml(before.dateTimeText), escapeHtml(after.dateTimeText))
+        val memoLine = if (before.memo == null && after.memo == null) {
+            null
+        } else {
+            diffText(
+                escapeHtml(truncate(before.memo ?: "(없음)", 150)),
+                escapeHtml(truncate(after.memo ?: "(없음)", 150))
+            )
+        }
+
+        val hasChange = titleLine.changed || categoryLine.changed || dateTimeLine.changed || memoLine?.changed == true
+        if (!hasChange) return
+
+        val sb = StringBuilder()
+        sb.append("✏️ <b>일정 수정</b>\n")
+        sb.append("제목: ${titleLine.text}\n")
+        sb.append("구분: ${categoryLine.text}\n")
+        sb.append("일시: ${dateTimeLine.text}\n")
+        memoLine?.let { sb.append("메모: ${it.text}\n") }
+        send(sb.toString().trimEnd(), chatId = scheduleChatId.ifBlank { defaultChatId })
+    }
+
+    private data class DiffResult(val text: String, val changed: Boolean)
+
+    private fun diffText(before: String, after: String): DiffResult =
+        if (before == after) DiffResult(before, false) else DiffResult("$before → $after", true)
 
     private fun appendCategorySpend(sb: StringBuilder, label: String, spend: CategorySpend) {
         sb.append("- $label ${format(spend.total)}원\n")

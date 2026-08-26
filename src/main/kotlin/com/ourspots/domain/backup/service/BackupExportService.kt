@@ -8,6 +8,7 @@ import com.ourspots.domain.backup.BackupTable
 import com.ourspots.domain.expense.repository.ExpenseRecordRepository
 import com.ourspots.domain.feedback.repository.FeedbackRepository
 import com.ourspots.domain.place.repository.PlaceRepository
+import com.ourspots.domain.schedule.repository.ScheduleEventRepository
 import com.ourspots.domain.weight.repository.WeightRecordRepository
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.springframework.stereotype.Service
@@ -26,7 +27,8 @@ class BackupExportService(
     private val loginAttemptRepository: LoginAttemptRepository,
     private val feedbackRepository: FeedbackRepository,
     private val errorLogRepository: ErrorLogRepository,
-    private val accessDeniedLogRepository: AccessDeniedLogRepository
+    private val accessDeniedLogRepository: AccessDeniedLogRepository,
+    private val scheduleEventRepository: ScheduleEventRepository
 ) {
     companion object {
         private val DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd")
@@ -116,6 +118,19 @@ class BackupExportService(
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(it.id, it.ipAddress, it.method, it.path, it.message, it.userAgent, it.createdAt.toString())
+                    }
+            )
+
+            BackupTable.SCHEDULE_EVENTS -> TableData(
+                listOf("id", "title", "category", "startAt", "endAt", "allDay", "memo", "createdAt", "updatedAt", "deletedAt"),
+                scheduleEventRepository.findAllIncludingDeleted()
+                    .filterByPeriod(period, cutoff) { it.createdAt.toLocalDate() }
+                    .sortedByDescending { it.createdAt }
+                    .map {
+                        listOf(
+                            it.id, it.title, it.category.name, it.startAt.toString(), it.endAt.toString(),
+                            it.allDay, it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
+                        )
                     }
             )
         }
