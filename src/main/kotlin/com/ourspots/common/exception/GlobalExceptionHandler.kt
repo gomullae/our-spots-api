@@ -16,6 +16,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.servlet.resource.NoResourceFoundException
 
@@ -121,6 +122,13 @@ class GlobalExceptionHandler(
     fun handleConstraintViolationException(e: ConstraintViolationException): ApiResponse<Nothing> {
         val message = e.constraintViolations.joinToString(", ") { "${it.propertyPath}: ${it.message}" }
         return ApiResponse.error(message)
+    }
+
+    // 클라이언트가 응답을 다 받기 전에 연결을 끊음(탭 종료/이동, 네트워크 전환 중 끊김 등) — 서버 버그가 아니라
+    // 흔한 타이밍 이슈라 error_logs 저장/텔레그램 알림 없이 조용히 로그만 남김(catch-all보다 먼저 매칭되도록 별도 핸들러로 분리)
+    @ExceptionHandler(AsyncRequestNotUsableException::class)
+    fun handleAsyncRequestNotUsable(e: AsyncRequestNotUsableException) {
+        logger.warn("클라이언트 연결 끊김으로 응답 실패: ${e.message}")
     }
 
     @ExceptionHandler(Exception::class)
