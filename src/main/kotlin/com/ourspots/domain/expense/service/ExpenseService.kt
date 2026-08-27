@@ -11,6 +11,7 @@ import com.ourspots.domain.expense.entity.ExpenseRecord
 import com.ourspots.domain.expense.entity.PaymentMethod
 import com.ourspots.domain.expense.repository.ExpenseRecordRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -76,6 +77,11 @@ class ExpenseService(
         return ExpenseRecordResponse.from(expenseRecordRepository.save(record))
     }
 
+    // NOT_SUPPORTED로 클래스 레벨 @Transactional(readOnly=true)를 명시적으로 덮어씀 — 안 그러면 이 메서드 전체가
+    // 읽기 전용 트랜잭션 하나로 묶여서, 텔레그램 발송(최대 수 초 소요되는 외부 HTTP 호출) 내내 커넥션 풀(운영 5개,
+    // 앱 전체 공유)의 커넥션 하나를 붙잡고 있게 됨. findByExpenseDateBetween은 리포지토리 자체가 짧은 자체
+    // 트랜잭션으로 처리하므로 조회 자체는 그대로 정상 동작함
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun sendWeeklySummary(startDate: LocalDate, endDate: LocalDate, budget: Long) {
         val records = expenseRecordRepository.findByExpenseDateBetween(startDate, endDate, false)
         val foodRecords = records.filter { it.category == ExpenseCategory.FOOD }

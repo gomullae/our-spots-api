@@ -10,6 +10,7 @@ import com.ourspots.domain.schedule.entity.ScheduleCategory
 import com.ourspots.domain.schedule.entity.ScheduleEvent
 import com.ourspots.domain.schedule.repository.ScheduleEventRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.time.DayOfWeek
 import java.time.LocalDateTime
@@ -28,7 +29,10 @@ class ScheduleService(
     fun getMeta(): ScheduleMetaResponse =
         ScheduleMetaResponse(count = scheduleEventRepository.count(), lastModified = scheduleEventRepository.findMaxUpdatedAt())
 
-    @Transactional
+    // NOT_SUPPORTED: 텔레그램 발송(최대 수 초 소요되는 외부 HTTP 호출)이 DB 트랜잭션 안에 들어있으면 그 시간 내내
+    // 커넥션 풀(운영 5개, 앱 전체 공유)의 커넥션 하나를 붙잡고 있게 됨 — save()는 Spring Data JPA 리포지토리 자체가
+    // 짧은 자체 트랜잭션으로 처리하므로, 이 메서드 레벨에서는 트랜잭션을 열지 않아도 저장은 그대로 원자적으로 처리됨
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun createEvent(request: ScheduleEventRequest): ScheduleEventResponse {
         val event = ScheduleEvent(
             title = request.title,
@@ -43,7 +47,9 @@ class ScheduleService(
         return ScheduleEventResponse.from(saved)
     }
 
-    @Transactional
+    // createEvent와 동일한 이유(위 주석 참고) — findById/save 각각 리포지토리 자체 트랜잭션으로 원자적으로 처리되고,
+    // 그 사이 조회한 detached 엔티티를 메모리에서 수정 후 save()에 넘기는 것도 JPA merge로 정상 동작함
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun updateEvent(id: Long, request: ScheduleEventRequest): ScheduleEventResponse {
         val event = scheduleEventRepository.findById(id)
             .orElseThrow { NotFoundException("Schedule event not found: $id") }

@@ -12,6 +12,7 @@ import org.springframework.cache.annotation.Cacheable
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -120,7 +121,10 @@ class PlaceService(
     }
 
     // 배치와 달리 관리자가 명시적으로 요청한 것이므로 googleRatingFailCount 상한(3회) 상관없이 항상 재시도함
-    @Transactional
+    // NOT_SUPPORTED: Google API 호출(최대 10초)이 DB 트랜잭션 안에 들어있으면 그 시간 내내 커넥션 풀(운영 5개,
+    // 앱 전체 공유)의 커넥션 하나를 붙잡고 있게 됨 — findById/save 각각 리포지토리 자체 트랜잭션으로 원자적으로
+    // 처리되므로, 조회한 detached 엔티티를 메모리에서 수정 후 save()에 넘겨도 정상 동작함(ScheduleService와 동일 패턴)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun syncGoogleRating(id: Long): PlaceResponse {
         if (!googlePlaceSyncService.isConfigured()) {
             throw ServiceUnavailableException("Google API 키가 설정되지 않았습니다.")
