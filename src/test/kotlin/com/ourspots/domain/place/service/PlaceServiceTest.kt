@@ -50,46 +50,6 @@ class PlaceServiceTest {
     }
 
     @Nested
-    @DisplayName("getAllPlaces")
-    inner class GetAllPlaces {
-
-        @Test
-        fun getAllPlaces_whenTypeIsNull_shouldReturnAllPlaces() {
-            // given
-            val places = listOf(
-                createPlace(1L, "맛집1", PlaceType.RESTAURANT),
-                createPlace(2L, "놀이터1", PlaceType.KIDS_PLAYGROUND)
-            )
-            every { placeRepository.findAll() } returns places
-
-            // when
-            val result = placeService.getAllPlaces(null, true)
-
-            // then
-            assertEquals(2, result.size)
-            verify { placeRepository.findAll() }
-        }
-
-        @Test
-        fun getAllPlaces_whenTypeIsSpecified_shouldReturnFilteredPlaces() {
-            // given
-            val restaurants = listOf(
-                createPlace(1L, "맛집1", PlaceType.RESTAURANT),
-                createPlace(2L, "맛집2", PlaceType.RESTAURANT)
-            )
-            every { placeRepository.findByType(PlaceType.RESTAURANT) } returns restaurants
-
-            // when
-            val result = placeService.getAllPlaces(PlaceType.RESTAURANT, true)
-
-            // then
-            assertEquals(2, result.size)
-            result.forEach { assertEquals(PlaceType.RESTAURANT, it.type) }
-            verify { placeRepository.findByType(PlaceType.RESTAURANT) }
-        }
-    }
-
-    @Nested
     @DisplayName("getPlace")
     inner class GetPlace {
 

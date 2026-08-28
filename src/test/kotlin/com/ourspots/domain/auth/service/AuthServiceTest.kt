@@ -213,30 +213,4 @@ class AuthServiceTest {
         }
     }
 
-    @Nested
-    @DisplayName("unblockIp")
-    inner class UnblockIp {
-
-        @Test
-        fun unblockIp_whenCalled_shouldAllowLoginAgain() {
-            // given
-            val expectedToken = "jwt-token"
-            every { jwtProvider.generateToken() } returns expectedToken
-
-            repeat(AuthService.MAX_ATTEMPTS) {
-                runCatching { authService.login("wrong", testIp, testUserAgent) }
-            }
-
-            assertThrows<TooManyRequestsException> {
-                authService.login(adminPassword, testIp, testUserAgent)
-            }
-
-            // when
-            authService.unblockIp(testIp)
-
-            // then
-            val result = authService.login(adminPassword, testIp, testUserAgent)
-            assertNotNull(result)
-        }
-    }
 }

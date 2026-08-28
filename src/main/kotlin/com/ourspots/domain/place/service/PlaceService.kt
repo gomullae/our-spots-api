@@ -34,25 +34,13 @@ class PlaceService(
         private const val MAX_RECENT_PLACES_SIZE = 100
     }
 
-    // 개인 카테고리(나의 발자취 등)는 비인증 사용자에게 노출되면 안 됨 — getAllPlaces/getPlace/getMarkers 공통 규칙
+    // 개인 카테고리(나의 발자취 등)는 비인증 사용자에게 노출되면 안 됨 — getPlace/getMarkers 공통 규칙
     private fun isHiddenFromUser(type: PlaceType?, authenticated: Boolean): Boolean =
         !authenticated && type in PlaceType.PERSONAL_TYPES
 
     // LIKE 패턴에서 %, _ 는 와일드카드로 해석되므로 검색어에 그대로 포함되면 의도치 않게 넓게/좁게 매치될 수 있음 → 이스케이프
     private fun escapeLikePattern(value: String): String =
         value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-    fun getAllPlaces(type: PlaceType?, authenticated: Boolean): List<PlaceResponse> {
-        val places = if (type != null) {
-            if (isHiddenFromUser(type, authenticated)) return emptyList()
-            placeRepository.findByType(type)
-        } else {
-            if (authenticated) placeRepository.findAll()
-            else placeRepository.findByTypeNotIn(PlaceType.PERSONAL_TYPES)
-        }
-        val photosByPlaceId = photoService.listByEntities(PhotoEntityType.PLACE, places.map { it.id })
-        return places.map { PlaceResponse.from(it, photosByPlaceId[it.id] ?: emptyList()) }
-    }
 
     fun getPlace(id: Long, authenticated: Boolean): PlaceResponse {
         val place = placeRepository.findByIdOrThrow(id, "Place")

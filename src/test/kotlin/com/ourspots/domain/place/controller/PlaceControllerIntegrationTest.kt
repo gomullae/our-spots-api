@@ -62,37 +62,6 @@ class PlaceControllerIntegrationTest {
     }
 
     @Nested
-    @DisplayName("GET /api/places")
-    inner class GetAllPlaces {
-
-        @Test
-        fun getAllPlaces_whenPlacesExist_shouldReturnAllPlaces() {
-            // given
-            createTestPlace("맛집1", PlaceType.RESTAURANT)
-            createTestPlace("놀이터1", PlaceType.KIDS_PLAYGROUND)
-
-            // when & then
-            mockMvc.perform(get("/api/places"))
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.length()").value(2))
-        }
-
-        @Test
-        fun getAllPlaces_whenTypeSpecified_shouldReturnFilteredPlaces() {
-            // given
-            createTestPlace("맛집1", PlaceType.RESTAURANT)
-            createTestPlace("맛집2", PlaceType.RESTAURANT)
-            createTestPlace("놀이터1", PlaceType.KIDS_PLAYGROUND)
-
-            // when & then
-            mockMvc.perform(get("/api/places").param("type", "RESTAURANT"))
-                .andExpect(status().isOk)
-                .andExpect(jsonPath("$.data.length()").value(2))
-        }
-    }
-
-    @Nested
     @DisplayName("GET /api/places/recent")
     inner class GetRecentPlaces {
 

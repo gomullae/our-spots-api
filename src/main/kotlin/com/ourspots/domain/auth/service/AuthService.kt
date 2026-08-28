@@ -80,12 +80,4 @@ class AuthService(
         )
         loginAttemptRepository.save(attempt)
     }
-
-    fun unblockIp(ipAddress: String) {
-        attemptCache.remove(ipAddress)
-    }
-
-    fun getAttemptsByIp(ipAddress: String): List<LoginAttempt> {
-        return loginAttemptRepository.findByIpAddressOrderByCreatedAtDesc(ipAddress)
-    }
 }

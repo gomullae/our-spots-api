@@ -43,15 +43,6 @@ class PlaceController(
         return ApiResponse.success(placeService.syncGoogleRating(id))
     }
 
-    @GetMapping
-    fun getAllPlaces(
-        @RequestParam(required = false) type: PlaceType?,
-        @RequestHeader("Authorization", required = false) authHeader: String?
-    ): ApiResponse<List<PlaceResponse>> {
-        val authenticated = jwtProvider.isValidAuthHeader(authHeader)
-        return ApiResponse.success(placeService.getAllPlaces(type, authenticated))
-    }
-
     @GetMapping("/{id}")
     fun getPlace(
         @PathVariable id: Long,
