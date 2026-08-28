@@ -6,6 +6,8 @@ import com.ourspots.api.dto.ScheduleMetaResponse
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.notification.ScheduleEventSummary
 import com.ourspots.common.notification.TelegramNotificationService
+import com.ourspots.domain.photo.entity.PhotoEntityType
+import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.schedule.entity.ScheduleCategory
 import com.ourspots.domain.schedule.entity.ScheduleEvent
 import com.ourspots.domain.schedule.repository.ScheduleEventRepository
@@ -19,11 +21,15 @@ import java.time.LocalDateTime
 @Transactional(readOnly = true)
 class ScheduleService(
     private val scheduleEventRepository: ScheduleEventRepository,
-    private val telegramNotificationService: TelegramNotificationService
+    private val telegramNotificationService: TelegramNotificationService,
+    private val photoService: PhotoService
 ) {
 
-    fun getEvents(start: LocalDateTime, end: LocalDateTime, includeDeleted: Boolean = false): List<ScheduleEventResponse> =
-        scheduleEventRepository.findOverlapping(start, end, includeDeleted).map { ScheduleEventResponse.from(it) }
+    fun getEvents(start: LocalDateTime, end: LocalDateTime, includeDeleted: Boolean = false): List<ScheduleEventResponse> {
+        val events = scheduleEventRepository.findOverlapping(start, end, includeDeleted)
+        val photosByEventId = photoService.listByEntities(PhotoEntityType.SCHEDULE_EVENT, events.map { it.id })
+        return events.map { ScheduleEventResponse.from(it, photosByEventId[it.id] ?: emptyList()) }
+    }
 
     // 프론트가 로컬 캐시를 그대로 써도 되는지 확인하는 용도 — count(등록/삭제 감지) + lastModified(수정 감지) 조합
     fun getMeta(): ScheduleMetaResponse =
@@ -64,7 +70,7 @@ class ScheduleService(
 
         val saved = scheduleEventRepository.save(event)
         telegramNotificationService.notifyScheduleUpdated(before, toSummary(saved))
-        return ScheduleEventResponse.from(saved)
+        return ScheduleEventResponse.from(saved, photoService.listByEntity(PhotoEntityType.SCHEDULE_EVENT, saved.id))
     }
 
     @Transactional
@@ -79,7 +85,8 @@ class ScheduleService(
         val event = scheduleEventRepository.findByIdIncludingDeleted(id)
             ?: throw NotFoundException("Schedule event not found: $id")
         event.deletedAt = null
-        return ScheduleEventResponse.from(scheduleEventRepository.save(event))
+        val saved = scheduleEventRepository.save(event)
+        return ScheduleEventResponse.from(saved, photoService.listByEntity(PhotoEntityType.SCHEDULE_EVENT, saved.id))
     }
 
     // ScheduleCategory 등 도메인 타입을 common(TelegramNotificationService)에 노출하지 않기 위해 사람이 읽는 문자열로 미리 변환

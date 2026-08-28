@@ -6,6 +6,7 @@ import com.ourspots.api.dto.RecentPlacesFilter
 import com.ourspots.common.exception.DuplicateException
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.exception.ServiceUnavailableException
+import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
 import com.ourspots.domain.place.repository.PlaceRepository
@@ -33,12 +34,18 @@ class PlaceServiceTest {
     @MockK
     private lateinit var googlePlaceSyncService: GooglePlaceSyncService
 
+    @MockK(relaxed = true)
+    private lateinit var photoService: PhotoService
+
     @InjectMockKs
     private lateinit var placeService: PlaceService
 
     @BeforeEach
     fun setUp() {
         MockKAnnotations.init(this)
+        // 사진 기능은 별도 테스트에서 검증 — 여기선 항상 빈 목록을 반환하게 해서 기존 테스트 로직에 영향 없게 함
+        every { photoService.listByEntity(any(), any()) } returns emptyList()
+        every { photoService.listByEntities(any(), any()) } returns emptyMap()
     }
 
     @Nested

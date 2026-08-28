@@ -20,10 +20,13 @@ data class ScheduleEventResponse(
     val memo: String?,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime,
-    val deletedAt: LocalDateTime?
+    val deletedAt: LocalDateTime?,
+    val photos: List<PhotoResponse> = emptyList()
 ) {
     companion object {
-        fun from(event: ScheduleEvent) = ScheduleEventResponse(
+        // 새로 생성되는 일정은 이 시점에 사진이 존재할 수 없어(등록 폼에서 저장 성공 후에야 confirm 호출) 기본값 emptyList로 충분 —
+        // 이미 존재하는 일정을 응답할 때만 호출부(ScheduleService)가 실제 사진 목록을 넘겨줌
+        fun from(event: ScheduleEvent, photos: List<PhotoResponse> = emptyList()) = ScheduleEventResponse(
             id = event.id,
             title = event.title,
             category = event.category,
@@ -33,7 +36,8 @@ data class ScheduleEventResponse(
             memo = event.memo,
             createdAt = event.createdAt,
             updatedAt = event.updatedAt,
-            deletedAt = event.deletedAt
+            deletedAt = event.deletedAt,
+            photos = photos
         )
     }
 }

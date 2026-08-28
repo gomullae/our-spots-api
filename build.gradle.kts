@@ -29,6 +29,8 @@ dependencies {
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.apache.poi:poi-ooxml:5.2.5")
+	// Cloudflare R2 사진 업로드용 — R2가 S3 호환 API라 AWS SDK를 그대로 쓰되 엔드포인트만 R2로 바꿔서 사용(R2Config 참고)
+	implementation("software.amazon.awssdk:s3:2.46.18")
 	implementation("io.jsonwebtoken:jjwt-api:0.12.6")
 	runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
 	runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")

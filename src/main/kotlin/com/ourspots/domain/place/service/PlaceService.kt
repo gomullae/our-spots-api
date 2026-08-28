@@ -4,6 +4,8 @@ import com.ourspots.api.dto.*
 import com.ourspots.common.exception.DuplicateException
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.exception.ServiceUnavailableException
+import com.ourspots.domain.photo.entity.PhotoEntityType
+import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
 import com.ourspots.domain.place.repository.PlaceRepository
@@ -21,7 +23,8 @@ import java.time.LocalDateTime
 @Transactional(readOnly = true)
 class PlaceService(
     private val placeRepository: PlaceRepository,
-    private val googlePlaceSyncService: GooglePlaceSyncService
+    private val googlePlaceSyncService: GooglePlaceSyncService,
+    private val photoService: PhotoService
 ) {
 
     companion object {
@@ -45,7 +48,8 @@ class PlaceService(
             if (authenticated) placeRepository.findAll()
             else placeRepository.findByTypeNotIn(PlaceType.PERSONAL_TYPES)
         }
-        return places.map { PlaceResponse.from(it) }
+        val photosByPlaceId = photoService.listByEntities(PhotoEntityType.PLACE, places.map { it.id })
+        return places.map { PlaceResponse.from(it, photosByPlaceId[it.id] ?: emptyList()) }
     }
 
     fun getPlace(id: Long, authenticated: Boolean): PlaceResponse {
@@ -54,7 +58,7 @@ class PlaceService(
         if (isHiddenFromUser(place.type, authenticated)) {
             throw NotFoundException("Place not found: $id")
         }
-        return PlaceResponse.from(place)
+        return PlaceResponse.from(place, photoService.listByEntity(PhotoEntityType.PLACE, place.id))
     }
 
     @Transactional
@@ -91,7 +95,8 @@ class PlaceService(
         request.googleRating?.let { place.googleRating = it }
         request.googleRatingsTotal?.let { place.googleRatingsTotal = it }
 
-        return PlaceResponse.from(placeRepository.save(place))
+        val saved = placeRepository.save(place)
+        return PlaceResponse.from(saved, photoService.listByEntity(PhotoEntityType.PLACE, saved.id))
     }
 
     @Transactional
@@ -107,9 +112,10 @@ class PlaceService(
         val end = (filter.endDate ?: LocalDate.now()).plusDays(1).atStartOfDay()
         val keyword = filter.keyword?.trim()?.takeIf { it.isNotEmpty() }?.let { escapeLikePattern(it) }
         val cappedSize = size.coerceIn(1, MAX_RECENT_PLACES_SIZE)
-        return placeRepository
+        val placesPage = placeRepository
             .searchRecentPlaces(start, end, keyword, filter.type?.name, filter.grade, filter.includeDeleted, PageRequest.of(page, cappedSize))
-            .map { PlaceResponse.from(it) }
+        val photosByPlaceId = photoService.listByEntities(PhotoEntityType.PLACE, placesPage.content.map { it.id })
+        return placesPage.map { PlaceResponse.from(it, photosByPlaceId[it.id] ?: emptyList()) }
     }
 
     @Transactional
@@ -117,7 +123,8 @@ class PlaceService(
         val place = placeRepository.findByIdIncludingDeleted(id)
             ?: throw NotFoundException("Place not found: $id")
         place.deletedAt = null
-        return PlaceResponse.from(placeRepository.save(place))
+        val saved = placeRepository.save(place)
+        return PlaceResponse.from(saved, photoService.listByEntity(PhotoEntityType.PLACE, saved.id))
     }
 
     // 배치와 달리 관리자가 명시적으로 요청한 것이므로 googleRatingFailCount 상한(3회) 상관없이 항상 재시도함
@@ -142,7 +149,8 @@ class PlaceService(
         } else {
             place.googleRatingFailCount++
         }
-        return PlaceResponse.from(placeRepository.save(place))
+        val saved = placeRepository.save(place)
+        return PlaceResponse.from(saved, photoService.listByEntity(PhotoEntityType.PLACE, saved.id))
     }
 
     @CacheEvict(value = ["markers"], allEntries = true)

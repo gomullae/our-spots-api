@@ -3,6 +3,7 @@ package com.ourspots.domain.schedule.service
 import com.ourspots.api.dto.ScheduleEventRequest
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.notification.TelegramNotificationService
+import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.schedule.entity.ScheduleCategory
 import com.ourspots.domain.schedule.entity.ScheduleEvent
 import com.ourspots.domain.schedule.repository.ScheduleEventRepository
@@ -30,12 +31,18 @@ class ScheduleServiceTest {
     @MockK(relaxed = true)
     private lateinit var telegramNotificationService: TelegramNotificationService
 
+    @MockK(relaxed = true)
+    private lateinit var photoService: PhotoService
+
     @InjectMockKs
     private lateinit var scheduleService: ScheduleService
 
     @BeforeEach
     fun setUp() {
         MockKAnnotations.init(this)
+        // 사진 기능은 별도 테스트에서 검증 — 여기선 항상 빈 목록을 반환하게 해서 기존 테스트 로직에 영향 없게 함
+        every { photoService.listByEntity(any(), any()) } returns emptyList()
+        every { photoService.listByEntities(any(), any()) } returns emptyMap()
     }
 
     private fun createEvent(

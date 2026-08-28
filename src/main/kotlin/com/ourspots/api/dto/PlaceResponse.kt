@@ -18,10 +18,13 @@ data class PlaceResponse(
     val googleRatingsTotal: Int?,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime,
-    val deletedAt: LocalDateTime?
+    val deletedAt: LocalDateTime?,
+    val photos: List<PhotoResponse> = emptyList()
 ) {
     companion object {
-        fun from(place: Place) = PlaceResponse(
+        // 새로 생성되는 장소는 이 시점에 사진이 존재할 수 없어(등록 폼에서 저장 성공 후에야 confirm 호출) 기본값 emptyList로 충분 —
+        // 이미 존재하는 장소를 응답할 때만 호출부(PlaceService)가 실제 사진 목록을 넘겨줌
+        fun from(place: Place, photos: List<PhotoResponse> = emptyList()) = PlaceResponse(
             id = place.id,
             name = place.name,
             type = place.type,
@@ -35,7 +38,8 @@ data class PlaceResponse(
             googleRatingsTotal = place.googleRatingsTotal,
             createdAt = place.createdAt,
             updatedAt = place.updatedAt,
-            deletedAt = place.deletedAt
+            deletedAt = place.deletedAt,
+            photos = photos
         )
     }
 }
