@@ -22,6 +22,10 @@ interface ExpenseRecordRepository : JpaRepository<ExpenseRecord, Long> {
     @Query("SELECT * FROM expense_records ORDER BY id", nativeQuery = true)
     fun findAllIncludingDeleted(): List<ExpenseRecord>
 
+    // 백업/로그 이력 "최근 3개월" 조회용 — PlaceRepository.findAllIncludingDeletedSince()와 동일 패턴
+    @Query("SELECT * FROM expense_records WHERE created_at >= :cutoff ORDER BY id", nativeQuery = true)
+    fun findAllIncludingDeletedSince(cutoff: LocalDateTime): List<ExpenseRecord>
+
     // 프론트 캐시 검증(/api/expenses/meta)용 — JPQL이라 @SQLRestriction(deleted_at IS NULL)이 자동 적용됨
     @Query("SELECT MAX(e.updatedAt) FROM ExpenseRecord e")
     fun findMaxUpdatedAt(): LocalDateTime?

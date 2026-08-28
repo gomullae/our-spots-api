@@ -99,6 +99,30 @@ class MapControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].name").value("맛집1"))
         }
+
+        @Test
+        fun getMarkers_whenNotAuthenticated_shouldOnlyIncludeGrade1Restaurants() {
+            createTestPlace("찐맛집", PlaceType.RESTAURANT, grade = 1)
+            createTestPlace("괜찮은맛집", PlaceType.RESTAURANT, grade = 2)
+            createTestPlace("무난한맛집", PlaceType.RESTAURANT, grade = 3)
+            createTestPlace("놀이터 3등급", PlaceType.KIDS_PLAYGROUND, grade = 3)
+
+            mockMvc.perform(get("/api/map/markers"))
+                .andExpect(status().isOk)
+                // 맛집은 1등급만 남고, 다른 공개 타입(아이 놀이터)은 등급 무관하게 그대로 노출
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[*].name").value(org.hamcrest.Matchers.containsInAnyOrder("찐맛집", "놀이터 3등급")))
+        }
+
+        @Test
+        fun getMarkers_whenAuthenticated_shouldIncludeAllRestaurantGrades() {
+            createTestPlace("찐맛집", PlaceType.RESTAURANT, grade = 1)
+            createTestPlace("무난한맛집", PlaceType.RESTAURANT, grade = 3)
+
+            mockMvc.perform(get("/api/map/markers").header("Authorization", "Bearer $authToken"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.length()").value(2))
+        }
     }
 
     @Nested
@@ -126,9 +150,12 @@ class MapControllerIntegrationTest {
         }
     }
 
-    private fun createTestPlace(name: String, type: PlaceType): Place {
+    // grade 기본값을 1로 둠 — 실제 데이터는 보통 등급이 있고, 비로그인 시 "맛집은 1등급만" 규칙이
+    // DB 쿼리에 생겨서(PlaceRepository.findPublicMarkers) grade가 null이면 이 테스트들의 의도(타입 필터링/
+    // 개인 카테고리 제외 검증)와 무관하게 걸러져버림 — 등급 자체를 검증하는 테스트는 별도로 grade를 명시함
+    private fun createTestPlace(name: String, type: PlaceType, grade: Int? = 1): Place {
         return placeRepository.save(
-            Place(name = name, type = type, address = "서울시 종로구", latitude = 37.5, longitude = 127.0)
+            Place(name = name, type = type, address = "서울시 종로구", latitude = 37.5, longitude = 127.0, grade = grade)
         )
     }
 }

@@ -153,17 +153,23 @@ class PlaceService(
             return emptyList()
         }
 
-        val places = when {
-            swLat != null && swLng != null && neLat != null && neLng != null -> {
-                when {
-                    type != null -> placeRepository.findByTypeWithinBounds(type, swLat, swLng, neLat, neLng)
-                    authenticated -> placeRepository.findWithinBounds(swLat, swLng, neLat, neLng)
-                    else -> placeRepository.findWithinBoundsExcludingTypes(PlaceType.PERSONAL_TYPES, swLat, swLng, neLat, neLng)
-                }
+        val places = if (!authenticated) {
+            // 비로그인 조회는 bounds/type 유무와 무관하게 이 쿼리 하나로 통일 — 개인 카테고리 제외와
+            // "맛집은 1등급만" 규칙(이전엔 프론트에서만 걸러서 낮은 등급 데이터가 응답엔 그대로 실렸음)을
+            // DB 단에서 확실히 적용하기 위함
+            placeRepository.findPublicMarkers(
+                personalTypes = PlaceType.PERSONAL_TYPES.map { it.name },
+                type = type?.name,
+                swLat = swLat, swLng = swLng, neLat = neLat, neLng = neLng
+            )
+        } else {
+            when {
+                swLat != null && swLng != null && neLat != null && neLng != null ->
+                    if (type != null) placeRepository.findByTypeWithinBounds(type, swLat, swLng, neLat, neLng)
+                    else placeRepository.findWithinBounds(swLat, swLng, neLat, neLng)
+                type != null -> placeRepository.findByType(type)
+                else -> placeRepository.findAll()
             }
-            type != null -> placeRepository.findByType(type)
-            authenticated -> placeRepository.findAll()
-            else -> placeRepository.findByTypeNotIn(PlaceType.PERSONAL_TYPES)
         }
         val placeIdsWithPhotos = photoService.findEntityIdsWithPhotos(PhotoEntityType.PLACE, places.map { it.id })
         return places.map { MarkerResponse.from(it, hasPhotos = it.id in placeIdsWithPhotos) }

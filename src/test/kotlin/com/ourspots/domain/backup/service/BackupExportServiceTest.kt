@@ -26,6 +26,7 @@ import io.mockk.MockKAnnotations
 import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
+import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -97,21 +98,22 @@ class BackupExportServiceTest {
         }
 
         @Test
-        fun fetchTableData_whenPlacesAndPeriodRecent3Months_shouldExcludeOlderRows() {
-            val old = Place(
-                id = 1, name = "오래된 곳", type = PlaceType.RESTAURANT, address = "주소1",
-                latitude = 37.0, longitude = 127.0, createdAt = LocalDateTime.now().minusMonths(6)
-            )
+        fun fetchTableData_whenPlacesAndPeriodRecent3Months_shouldQueryDbFilteredMethod() {
+            // 실제 기간 필터링은 이제 DB 쿼리(findAllIncludingDeletedSince)가 담당 — 여기선 RECENT_3_MONTHS일 때
+            // 전체 조회(findAllIncludingDeleted)가 아니라 이 메서드로 정확히 위임되는지만 검증(오래된 행을
+            // 코드에서 걸러내는 동작은 더 이상 서비스 책임이 아님)
             val recent = Place(
                 id = 2, name = "최근 등록", type = PlaceType.RESTAURANT, address = "주소2",
                 latitude = 37.1, longitude = 127.1, createdAt = LocalDateTime.now()
             )
-            every { placeRepository.findAllIncludingDeleted() } returns listOf(old, recent)
+            every { placeRepository.findAllIncludingDeletedSince(any()) } returns listOf(recent)
 
             val result = backupExportService.fetchTableData(BackupTable.PLACES, BackupPeriod.RECENT_3_MONTHS)
 
             assertEquals(1, result.rows.size)
             assertEquals(2L, result.rows[0][0])
+            verify(exactly = 0) { placeRepository.findAllIncludingDeleted() }
+            verify { placeRepository.findAllIncludingDeletedSince(any()) }
         }
 
         @Test
@@ -217,7 +219,7 @@ class BackupExportServiceTest {
 
         @Test
         fun export_withRecentPeriod_shouldUseDateRangeInFilename() {
-            every { expenseRecordRepository.findAllIncludingDeleted() } returns emptyList()
+            every { expenseRecordRepository.findAllIncludingDeletedSince(any()) } returns emptyList()
 
             val file = backupExportService.export(BackupTable.EXPENSE_RECORDS, BackupPeriod.RECENT_3_MONTHS)
 

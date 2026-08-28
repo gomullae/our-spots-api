@@ -301,6 +301,71 @@ class PlaceServiceTest {
             assertEquals(1, result.size)
             verify { placeRepository.findByTypeWithinBounds(PlaceType.RESTAURANT, 37.0, 126.0, 38.0, 128.0) }
         }
+
+        // 비로그인 조회는 findAll/findByType/findWithinBounds류가 아니라 findPublicMarkers 하나로만 가야
+        // 함(개인 카테고리 제외 + 맛집 1등급 제한을 DB 쿼리 자체에 담아두는 지점이라 다른 메서드로 새면
+        // 그 규칙이 통째로 빠짐) — 아래 테스트들은 항상 findPublicMarkers 호출 여부까지 같이 검증
+
+        @Test
+        fun getMarkers_whenUnauthenticatedAndNoFilters_shouldQueryPublicMarkersWithPersonalTypesExcluded() {
+            // given
+            val grade1Restaurant = createPlace(1L, "찐맛집", PlaceType.RESTAURANT, grade = 1)
+            every {
+                placeRepository.findPublicMarkers(PlaceType.PERSONAL_TYPES.map { it.name }, null, null, null, null, null)
+            } returns listOf(grade1Restaurant)
+
+            // when
+            val result = placeService.getMarkers(null, null, null, null, null, false)
+
+            // then
+            assertEquals(1, result.size)
+            verify { placeRepository.findPublicMarkers(PlaceType.PERSONAL_TYPES.map { it.name }, null, null, null, null, null) }
+            verify(exactly = 0) { placeRepository.findAll() }
+        }
+
+        @Test
+        fun getMarkers_whenUnauthenticatedAndRestaurantTypeSpecified_shouldStillQueryPublicMarkers() {
+            // given — 타입을 직접 지정해도(findByType 경로가 아니라) findPublicMarkers로 가야 등급 제한이 적용됨
+            val grade1Restaurant = createPlace(1L, "찐맛집", PlaceType.RESTAURANT, grade = 1)
+            every {
+                placeRepository.findPublicMarkers(PlaceType.PERSONAL_TYPES.map { it.name }, "RESTAURANT", null, null, null, null)
+            } returns listOf(grade1Restaurant)
+
+            // when
+            val result = placeService.getMarkers(PlaceType.RESTAURANT, null, null, null, null, false)
+
+            // then
+            assertEquals(1, result.size)
+            verify { placeRepository.findPublicMarkers(PlaceType.PERSONAL_TYPES.map { it.name }, "RESTAURANT", null, null, null, null) }
+            verify(exactly = 0) { placeRepository.findByType(any()) }
+        }
+
+        @Test
+        fun getMarkers_whenUnauthenticatedAndBoundsSpecified_shouldPassBoundsToPublicMarkers() {
+            // given
+            val places = listOf(createPlace(1L, "아지트", PlaceType.RELAXATION))
+            every {
+                placeRepository.findPublicMarkers(PlaceType.PERSONAL_TYPES.map { it.name }, null, 37.0, 126.0, 38.0, 128.0)
+            } returns places
+
+            // when
+            val result = placeService.getMarkers(null, 37.0, 126.0, 38.0, 128.0, false)
+
+            // then
+            assertEquals(1, result.size)
+            verify { placeRepository.findPublicMarkers(PlaceType.PERSONAL_TYPES.map { it.name }, null, 37.0, 126.0, 38.0, 128.0) }
+            verify(exactly = 0) { placeRepository.findWithinBounds(any(), any(), any(), any()) }
+        }
+
+        @Test
+        fun getMarkers_whenPersonalTypeAndUnauthenticated_shouldReturnEmptyWithoutQuerying() {
+            // when
+            val result = placeService.getMarkers(PlaceType.MY_FOOTPRINT, null, null, null, null, false)
+
+            // then
+            assertEquals(0, result.size)
+            verify(exactly = 0) { placeRepository.findPublicMarkers(any(), any(), any(), any(), any(), any()) }
+        }
     }
 
     @Nested
@@ -608,7 +673,7 @@ class PlaceServiceTest {
         }
     }
 
-    private fun createPlace(id: Long, name: String, type: PlaceType): Place {
+    private fun createPlace(id: Long, name: String, type: PlaceType, grade: Int = 1): Place {
         return Place(
             id = id,
             name = name,
@@ -616,7 +681,7 @@ class PlaceServiceTest {
             address = "서울시 테스트구",
             latitude = 37.5,
             longitude = 127.0,
-            grade = 1
+            grade = grade
         )
     }
 }

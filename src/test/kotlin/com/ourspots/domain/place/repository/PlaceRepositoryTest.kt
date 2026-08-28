@@ -139,6 +139,106 @@ class PlaceRepositoryTest {
     }
 
     @Nested
+    @DisplayName("findPublicMarkers")
+    inner class FindPublicMarkers {
+
+        private val personalTypes = PlaceType.PERSONAL_TYPES.map { it.name }
+
+        private fun search(
+            type: String? = null,
+            swLat: Double? = null,
+            swLng: Double? = null,
+            neLat: Double? = null,
+            neLng: Double? = null
+        ) = placeRepository.findPublicMarkers(personalTypes, type, swLat, swLng, neLat, neLng)
+
+        @Test
+        fun findPublicMarkers_whenPersonalType_shouldExclude() {
+            // given
+            createPlace("나의 발자취1", PlaceType.MY_FOOTPRINT)
+            createPlace("일반 맛집", PlaceType.RESTAURANT, grade = 1)
+
+            // when
+            val result = search()
+
+            // then
+            assertEquals(1, result.size)
+            assertEquals("일반 맛집", result[0].name)
+        }
+
+        @Test
+        fun findPublicMarkers_whenRestaurantGradeIsNot1_shouldExclude() {
+            // given
+            createPlace("찐맛집", PlaceType.RESTAURANT, grade = 1)
+            createPlace("괜찮은맛집", PlaceType.RESTAURANT, grade = 2)
+            createPlace("무난한맛집", PlaceType.RESTAURANT, grade = 3)
+
+            // when
+            val result = search()
+
+            // then
+            assertEquals(1, result.size)
+            assertEquals("찐맛집", result[0].name)
+        }
+
+        @Test
+        fun findPublicMarkers_whenKidsPlaygroundOrRelaxation_shouldIncludeAllGrades() {
+            // given — 맛집만 1등급 제한, 아이 놀이터/아빠의 시간은 등급 무관하게 다 노출
+            createPlace("놀이터 1등급", PlaceType.KIDS_PLAYGROUND, grade = 1)
+            createPlace("놀이터 3등급", PlaceType.KIDS_PLAYGROUND, grade = 3)
+            createPlace("휴식처 2등급", PlaceType.RELAXATION, grade = 2)
+
+            // when
+            val result = search()
+
+            // then
+            assertEquals(3, result.size)
+        }
+
+        @Test
+        fun findPublicMarkers_whenTypeSpecified_shouldFilterAndStillApplyRestaurantGradeRule() {
+            // given
+            createPlace("찐맛집", PlaceType.RESTAURANT, grade = 1)
+            createPlace("괜찮은맛집", PlaceType.RESTAURANT, grade = 2)
+            createPlace("놀이터", PlaceType.KIDS_PLAYGROUND, grade = 1)
+
+            // when
+            val result = search(type = PlaceType.RESTAURANT.name)
+
+            // then
+            assertEquals(1, result.size)
+            assertEquals("찐맛집", result[0].name)
+        }
+
+        @Test
+        fun findPublicMarkers_whenBoundsSpecified_shouldFilterByLocation() {
+            // given
+            createPlace("강남 찐맛집", PlaceType.RESTAURANT, lat = 37.5, lng = 127.0, grade = 1)
+            createPlace("부산 찐맛집", PlaceType.RESTAURANT, lat = 35.1, lng = 129.0, grade = 1)
+
+            // when
+            val result = search(swLat = 37.4, swLng = 126.8, neLat = 37.7, neLng = 127.2)
+
+            // then
+            assertEquals(1, result.size)
+            assertEquals("강남 찐맛집", result[0].name)
+        }
+
+        @Test
+        fun findPublicMarkers_whenNoBoundsGiven_shouldReturnRegardlessOfLocation() {
+            // given
+            createPlace("강남 찐맛집", PlaceType.RESTAURANT, lat = 37.5, lng = 127.0, grade = 1)
+            createPlace("부산 찐맛집", PlaceType.RESTAURANT, lat = 35.1, lng = 129.0, grade = 1)
+
+            // when
+            val result = search()
+
+            // then
+            assertEquals(2, result.size)
+        }
+    }
+
+    @Nested
     @DisplayName("Soft Delete")
     inner class SoftDelete {
 

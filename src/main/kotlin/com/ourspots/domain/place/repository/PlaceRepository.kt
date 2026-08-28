@@ -25,8 +25,6 @@ interface PlaceRepository : JpaRepository<Place, Long> {
 
     fun findByType(type: PlaceType): List<Place>
 
-    fun findByTypeNotIn(types: List<PlaceType>): List<Place>
-
     fun existsByNameAndAddress(name: String, address: String): Boolean
 
     @Query("""
@@ -36,18 +34,26 @@ interface PlaceRepository : JpaRepository<Place, Long> {
     """)
     fun findWithinBounds(swLat: Double, swLng: Double, neLat: Double, neLng: Double): List<Place>
 
-    @Query("""
-        SELECT p FROM Place p
-        WHERE p.type NOT IN :excludedTypes
-        AND p.latitude BETWEEN :swLat AND :neLat
-        AND p.longitude BETWEEN :swLng AND :neLng
-    """)
-    fun findWithinBoundsExcludingTypes(
-        excludedTypes: List<PlaceType>,
-        swLat: Double,
-        swLng: Double,
-        neLat: Double,
-        neLng: Double
+    // 비로그인 사용자용 마커 조회 전용 — 개인 카테고리 제외 + (선택적) 타입/범위 필터에 더해
+    // 맛집은 1등급(찐맛집)만 노출(그 외 공개 타입은 기존 등급 그대로 다 보임). bounds/type 유무 조합이
+    // 여러 겹이라 리포지토리 메서드를 따로 두는 대신 하나의 네이티브 쿼리로 통합해서 처리
+    @Query(
+        value = """
+            SELECT * FROM places
+            WHERE type NOT IN (:personalTypes)
+            AND (:type IS NULL OR type = :type)
+            AND (:swLat IS NULL OR (latitude BETWEEN :swLat AND :neLat AND longitude BETWEEN :swLng AND :neLng))
+            AND (type != 'RESTAURANT' OR grade = 1)
+        """,
+        nativeQuery = true
+    )
+    fun findPublicMarkers(
+        personalTypes: List<String>,
+        type: String?,
+        swLat: Double?,
+        swLng: Double?,
+        neLat: Double?,
+        neLng: Double?
     ): List<Place>
 
     @Query("""
@@ -81,6 +87,12 @@ interface PlaceRepository : JpaRepository<Place, Long> {
 
     @Query("SELECT * FROM places ORDER BY id", nativeQuery = true)
     fun findAllIncludingDeleted(): List<Place>
+
+    // 백업/로그 이력 화면의 "최근 3개월" 조회용 — findAllIncludingDeleted()로 전체를 퍼온 뒤 코드에서 거르면
+    // login_attempts/error_logs/access_denied_logs처럼 정리 배치 없이 계속 누적되는 테이블이 나중에 커졌을 때
+    // 매번 테이블 전체를 메모리에 올리게 됨 → DB 단에서 먼저 걸러서 필요한 만큼만 가져오도록 분리
+    @Query("SELECT * FROM places WHERE created_at >= :cutoff ORDER BY id", nativeQuery = true)
+    fun findAllIncludingDeletedSince(cutoff: LocalDateTime): List<Place>
 
     // @SQLRestriction("deleted_at IS NULL")은 네이티브 쿼리에는 적용되지 않음 → id로 삭제된 장소도 조회 가능 (복구용)
     @Query("SELECT * FROM places WHERE id = :id", nativeQuery = true)
