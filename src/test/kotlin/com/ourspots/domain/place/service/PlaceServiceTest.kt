@@ -46,6 +46,7 @@ class PlaceServiceTest {
         // 사진 기능은 별도 테스트에서 검증 — 여기선 항상 빈 목록을 반환하게 해서 기존 테스트 로직에 영향 없게 함
         every { photoService.listByEntity(any(), any()) } returns emptyList()
         every { photoService.listByEntities(any(), any()) } returns emptyMap()
+        every { photoService.findEntityIdsWithPhotos(any(), any()) } returns emptySet()
     }
 
     @Nested

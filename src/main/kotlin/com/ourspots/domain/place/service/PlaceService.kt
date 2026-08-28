@@ -177,6 +177,7 @@ class PlaceService(
             authenticated -> placeRepository.findAll()
             else -> placeRepository.findByTypeNotIn(PlaceType.PERSONAL_TYPES)
         }
-        return places.map { MarkerResponse.from(it) }
+        val placeIdsWithPhotos = photoService.findEntityIdsWithPhotos(PhotoEntityType.PLACE, places.map { it.id })
+        return places.map { MarkerResponse.from(it, hasPhotos = it.id in placeIdsWithPhotos) }
     }
 }

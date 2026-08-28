@@ -9,16 +9,18 @@ data class MarkerResponse(
     val type: PlaceType,
     val latitude: Double,
     val longitude: Double,
-    val grade: Int?
+    val grade: Int?,
+    val hasPhotos: Boolean
 ) {
     companion object {
-        fun from(place: Place) = MarkerResponse(
+        fun from(place: Place, hasPhotos: Boolean = false) = MarkerResponse(
             id = place.id,
             name = place.name,
             type = place.type,
             latitude = place.latitude,
             longitude = place.longitude,
-            grade = place.grade
+            grade = place.grade,
+            hasPhotos = hasPhotos
         )
     }
 }

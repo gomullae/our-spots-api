@@ -98,6 +98,12 @@ class PhotoService(
             .groupBy({ it.entityId }, { PhotoResponse.from(it) })
     }
 
+    // 마커처럼 사진 유무만 필요한 경우용 — listByEntities와 달리 URL 등을 안 실어 나르는 가벼운 벌크 조회
+    fun findEntityIdsWithPhotos(entityType: PhotoEntityType, entityIds: Collection<Long>): Set<Long> {
+        if (entityIds.isEmpty()) return emptySet()
+        return photoRepository.findDistinctEntityIdByEntityTypeAndEntityIdIn(entityType, entityIds)
+    }
+
     // 소프트 삭제라 R2 파일은 안 지움(Photo 엔티티의 @SQLDelete가 deleteById()를 UPDATE deleted_at으로 바꿔치기함) —
     // 실수/버그로 삭제돼도 파일이 그대로 남아있어 데이터 유실이 안 생김. 외부 API 호출이 없어졌으니 NOT_SUPPORTED도 불필요
     @Transactional
