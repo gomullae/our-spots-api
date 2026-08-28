@@ -3,9 +3,10 @@ package com.ourspots.domain.expense.service
 import com.ourspots.api.dto.ExpenseMetaResponse
 import com.ourspots.api.dto.ExpenseRecordRequest
 import com.ourspots.api.dto.ExpenseRecordResponse
-import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.notification.CategorySpend
 import com.ourspots.common.notification.TelegramNotificationService
+import com.ourspots.common.util.findByIdOrThrow
+import com.ourspots.common.util.restoreSoftDeleted
 import com.ourspots.domain.expense.entity.ExpenseCategory
 import com.ourspots.domain.expense.entity.ExpenseRecord
 import com.ourspots.domain.expense.entity.PaymentMethod
@@ -50,8 +51,7 @@ class ExpenseService(
 
     @Transactional
     fun updateRecord(id: Long, request: ExpenseRecordRequest): ExpenseRecordResponse {
-        val record = expenseRecordRepository.findById(id)
-            .orElseThrow { NotFoundException("Expense record not found: $id") }
+        val record = expenseRecordRepository.findByIdOrThrow(id, "Expense record")
 
         record.expenseDate = request.expenseDate
         record.paymentMethod = request.paymentMethod
@@ -64,17 +64,14 @@ class ExpenseService(
 
     @Transactional
     fun deleteRecord(id: Long) {
-        val record = expenseRecordRepository.findById(id)
-            .orElseThrow { NotFoundException("Expense record not found: $id") }
+        val record = expenseRecordRepository.findByIdOrThrow(id, "Expense record")
         expenseRecordRepository.delete(record)
     }
 
     @Transactional
     fun restoreRecord(id: Long): ExpenseRecordResponse {
-        val record = expenseRecordRepository.findByIdIncludingDeleted(id)
-            ?: throw NotFoundException("Expense record not found: $id")
-        record.deletedAt = null
-        return ExpenseRecordResponse.from(expenseRecordRepository.save(record))
+        val saved = restoreSoftDeleted(id, "Expense record", expenseRecordRepository::findByIdIncludingDeleted) { expenseRecordRepository.save(it) }
+        return ExpenseRecordResponse.from(saved)
     }
 
     // NOT_SUPPORTED로 클래스 레벨 @Transactional(readOnly=true)를 명시적으로 덮어씀 — 안 그러면 이 메서드 전체가

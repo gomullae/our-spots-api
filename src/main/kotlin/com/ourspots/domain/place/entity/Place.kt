@@ -1,5 +1,6 @@
 package com.ourspots.domain.place.entity
 
+import com.ourspots.common.util.SoftDeletable
 import jakarta.persistence.*
 import org.hibernate.annotations.SQLDelete
 import org.hibernate.annotations.SQLRestriction
@@ -49,8 +50,8 @@ class Place(
     var updatedAt: LocalDateTime = LocalDateTime.now(),
 
     // Soft Delete
-    var deletedAt: LocalDateTime? = null
-) {
+    override var deletedAt: LocalDateTime? = null
+) : SoftDeletable {
     @PreUpdate
     fun onUpdate() {
         updatedAt = LocalDateTime.now()

@@ -4,6 +4,8 @@ import com.ourspots.api.dto.*
 import com.ourspots.common.exception.DuplicateException
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.exception.ServiceUnavailableException
+import com.ourspots.common.util.findByIdOrThrow
+import com.ourspots.common.util.restoreSoftDeleted
 import com.ourspots.domain.photo.entity.PhotoEntityType
 import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.place.entity.Place
@@ -53,8 +55,7 @@ class PlaceService(
     }
 
     fun getPlace(id: Long, authenticated: Boolean): PlaceResponse {
-        val place = placeRepository.findById(id)
-            .orElseThrow { NotFoundException("Place not found: $id") }
+        val place = placeRepository.findByIdOrThrow(id, "Place")
         if (isHiddenFromUser(place.type, authenticated)) {
             throw NotFoundException("Place not found: $id")
         }
@@ -81,8 +82,7 @@ class PlaceService(
 
     @Transactional
     fun updatePlace(id: Long, request: PlaceUpdateRequest): PlaceResponse {
-        val place = placeRepository.findById(id)
-            .orElseThrow { NotFoundException("Place not found: $id") }
+        val place = placeRepository.findByIdOrThrow(id, "Place")
 
         request.name?.let { place.name = it }
         request.type?.let { place.type = it }
@@ -101,8 +101,7 @@ class PlaceService(
 
     @Transactional
     fun deletePlace(id: Long) {
-        val place = placeRepository.findById(id)
-            .orElseThrow { NotFoundException("Place not found: $id") }
+        val place = placeRepository.findByIdOrThrow(id, "Place")
         // Soft Delete: @SQLDelete 어노테이션에 의해 deletedAt이 설정됨
         placeRepository.delete(place)
     }
@@ -120,10 +119,7 @@ class PlaceService(
 
     @Transactional
     fun restorePlace(id: Long): PlaceResponse {
-        val place = placeRepository.findByIdIncludingDeleted(id)
-            ?: throw NotFoundException("Place not found: $id")
-        place.deletedAt = null
-        val saved = placeRepository.save(place)
+        val saved = restoreSoftDeleted(id, "Place", placeRepository::findByIdIncludingDeleted) { placeRepository.save(it) }
         return PlaceResponse.from(saved, photoService.listByEntity(PhotoEntityType.PLACE, saved.id))
     }
 
@@ -136,8 +132,7 @@ class PlaceService(
         if (!googlePlaceSyncService.isConfigured()) {
             throw ServiceUnavailableException("Google API 키가 설정되지 않았습니다.")
         }
-        val place = placeRepository.findById(id)
-            .orElseThrow { NotFoundException("Place not found: $id") }
+        val place = placeRepository.findByIdOrThrow(id, "Place")
 
         val result = googlePlaceSyncService.search(place.name, place.address, place.latitude, place.longitude)
         if (result != null) {

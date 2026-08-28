@@ -4,7 +4,7 @@ import com.ourspots.api.dto.PhotoConfirmRequest
 import com.ourspots.api.dto.PhotoPresignRequest
 import com.ourspots.api.dto.PhotoPresignResponse
 import com.ourspots.api.dto.PhotoResponse
-import com.ourspots.common.exception.NotFoundException
+import com.ourspots.common.util.findByIdOrThrow
 import com.ourspots.domain.photo.entity.Photo
 import com.ourspots.domain.photo.entity.PhotoEntityType
 import com.ourspots.domain.photo.repository.PhotoRepository
@@ -102,7 +102,7 @@ class PhotoService(
     // 실수/버그로 삭제돼도 파일이 그대로 남아있어 데이터 유실이 안 생김. 외부 API 호출이 없어졌으니 NOT_SUPPORTED도 불필요
     @Transactional
     fun delete(id: Long) {
-        val photo = photoRepository.findById(id).orElseThrow { NotFoundException("Photo not found: $id") }
+        val photo = photoRepository.findByIdOrThrow(id, "Photo")
         photoRepository.deleteById(photo.id)
         touchParentIfNeeded(photo.entityType, photo.entityId)
     }

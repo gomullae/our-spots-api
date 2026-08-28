@@ -3,7 +3,7 @@ package com.ourspots.domain.weight.service
 import com.ourspots.api.dto.WeightMetaResponse
 import com.ourspots.api.dto.WeightRecordResponse
 import com.ourspots.api.dto.WeightRecordUpsertRequest
-import com.ourspots.common.exception.NotFoundException
+import com.ourspots.common.util.findByIdOrThrow
 import com.ourspots.domain.weight.entity.WeightRecord
 import com.ourspots.domain.weight.repository.WeightRecordRepository
 import org.springframework.cache.annotation.CacheEvict
@@ -51,8 +51,7 @@ class WeightService(
     @Transactional
     @CacheEvict("weightRecords", allEntries = true)
     fun deleteRecord(id: Long) {
-        val record = weightRecordRepository.findById(id)
-            .orElseThrow { NotFoundException("Weight record not found: $id") }
+        val record = weightRecordRepository.findByIdOrThrow(id, "Weight record")
         weightRecordRepository.delete(record)
     }
 }

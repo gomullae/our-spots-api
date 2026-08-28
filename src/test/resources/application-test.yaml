@@ -23,3 +23,7 @@ app:
   jwt:
     secret: this-is-a-test-secret-key-for-jwt-signing-minimum-32-chars
     expiration-hours: 24
+  r2:
+    account-id: test-account-id
+    access-key-id: test-access-key-id
+    secret-access-key: test-secret-access-key

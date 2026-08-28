@@ -1,5 +1,6 @@
 package com.ourspots.domain.expense.entity
 
+import com.ourspots.common.util.SoftDeletable
 import jakarta.persistence.*
 import org.hibernate.annotations.SQLDelete
 import org.hibernate.annotations.SQLRestriction
@@ -38,8 +39,8 @@ class ExpenseRecord(
     @Column(nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now(),
 
-    var deletedAt: LocalDateTime? = null
-) {
+    override var deletedAt: LocalDateTime? = null
+) : SoftDeletable {
     @PreUpdate
     fun onUpdate() {
         updatedAt = LocalDateTime.now()

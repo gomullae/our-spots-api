@@ -3,9 +3,10 @@ package com.ourspots.domain.schedule.service
 import com.ourspots.api.dto.ScheduleEventRequest
 import com.ourspots.api.dto.ScheduleEventResponse
 import com.ourspots.api.dto.ScheduleMetaResponse
-import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.notification.ScheduleEventSummary
 import com.ourspots.common.notification.TelegramNotificationService
+import com.ourspots.common.util.findByIdOrThrow
+import com.ourspots.common.util.restoreSoftDeleted
 import com.ourspots.domain.photo.entity.PhotoEntityType
 import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.schedule.entity.ScheduleCategory
@@ -57,8 +58,7 @@ class ScheduleService(
     // 그 사이 조회한 detached 엔티티를 메모리에서 수정 후 save()에 넘기는 것도 JPA merge로 정상 동작함
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun updateEvent(id: Long, request: ScheduleEventRequest): ScheduleEventResponse {
-        val event = scheduleEventRepository.findById(id)
-            .orElseThrow { NotFoundException("Schedule event not found: $id") }
+        val event = scheduleEventRepository.findByIdOrThrow(id, "Schedule event")
         val before = toSummary(event)
 
         event.title = request.title
@@ -75,17 +75,13 @@ class ScheduleService(
 
     @Transactional
     fun deleteEvent(id: Long) {
-        val event = scheduleEventRepository.findById(id)
-            .orElseThrow { NotFoundException("Schedule event not found: $id") }
+        val event = scheduleEventRepository.findByIdOrThrow(id, "Schedule event")
         scheduleEventRepository.delete(event)
     }
 
     @Transactional
     fun restoreEvent(id: Long): ScheduleEventResponse {
-        val event = scheduleEventRepository.findByIdIncludingDeleted(id)
-            ?: throw NotFoundException("Schedule event not found: $id")
-        event.deletedAt = null
-        val saved = scheduleEventRepository.save(event)
+        val saved = restoreSoftDeleted(id, "Schedule event", scheduleEventRepository::findByIdIncludingDeleted) { scheduleEventRepository.save(it) }
         return ScheduleEventResponse.from(saved, photoService.listByEntity(PhotoEntityType.SCHEDULE_EVENT, saved.id))
     }
 
