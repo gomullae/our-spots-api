@@ -1,11 +1,15 @@
 package com.ourspots.domain.place.service
 
+import com.ourspots.api.dto.PhotoResponse
 import com.ourspots.api.dto.PlaceCreateRequest
+import com.ourspots.api.dto.PlaceRecentSortBy
 import com.ourspots.api.dto.PlaceUpdateRequest
 import com.ourspots.api.dto.RecentPlacesFilter
 import com.ourspots.common.exception.DuplicateException
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.exception.ServiceUnavailableException
+import com.ourspots.domain.photo.entity.Photo
+import com.ourspots.domain.photo.entity.PhotoEntityType
 import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
@@ -24,7 +28,9 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.*
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class PlaceServiceTest {
 
@@ -47,6 +53,7 @@ class PlaceServiceTest {
         every { photoService.listByEntity(any(), any()) } returns emptyList()
         every { photoService.listByEntities(any(), any()) } returns emptyMap()
         every { photoService.findEntityIdsWithPhotos(any(), any()) } returns emptySet()
+        every { photoService.findEntityIdsWithPublicPhotos(any(), any()) } returns emptySet()
     }
 
     @Nested
@@ -76,6 +83,40 @@ class PlaceServiceTest {
             assertThrows<NotFoundException> {
                 placeService.getPlace(999L, true)
             }
+        }
+
+        @Test
+        fun getPlace_whenUnauthenticated_shouldExcludePrivatePhotos() {
+            // given
+            val place = createPlace(1L, "맛집1", PlaceType.RESTAURANT)
+            every { placeRepository.findById(1L) } returns Optional.of(place)
+            every { photoService.listByEntity(any(), any()) } returns listOf(
+                photoResponse(1L, isPublic = true),
+                photoResponse(2L, isPublic = false)
+            )
+
+            // when
+            val result = placeService.getPlace(1L, false)
+
+            // then
+            assertEquals(listOf(1L), result.photos.map { it.id })
+        }
+
+        @Test
+        fun getPlace_whenAuthenticated_shouldIncludeAllPhotosRegardlessOfVisibility() {
+            // given
+            val place = createPlace(1L, "맛집1", PlaceType.RESTAURANT)
+            every { placeRepository.findById(1L) } returns Optional.of(place)
+            every { photoService.listByEntity(any(), any()) } returns listOf(
+                photoResponse(1L, isPublic = true),
+                photoResponse(2L, isPublic = false)
+            )
+
+            // when
+            val result = placeService.getPlace(1L, true)
+
+            // then
+            assertEquals(listOf(1L, 2L), result.photos.map { it.id })
         }
     }
 
@@ -366,6 +407,39 @@ class PlaceServiceTest {
             assertEquals(0, result.size)
             verify(exactly = 0) { placeRepository.findPublicMarkers(any(), any(), any(), any(), any(), any()) }
         }
+
+        // 마커 배지를 "사진 있음(회색)"/"공개 사진 있음(진하게)"으로 나누는 hasPublicPhoto 필드 검증
+        @Test
+        fun getMarkers_whenPlaceHasOnlyPrivatePhotos_shouldSetHasPhotosTrueButHasPublicPhotoFalse() {
+            // given
+            val places = listOf(createPlace(1L, "맛집1", PlaceType.RESTAURANT))
+            every { placeRepository.findAll() } returns places
+            every { photoService.findEntityIdsWithPhotos(any(), any()) } returns setOf(1L)
+            every { photoService.findEntityIdsWithPublicPhotos(any(), any()) } returns emptySet()
+
+            // when
+            val result = placeService.getMarkers(null, null, null, null, null, true)
+
+            // then
+            assertTrue(result[0].hasPhotos)
+            assertFalse(result[0].hasPublicPhoto)
+        }
+
+        @Test
+        fun getMarkers_whenPlaceHasAtLeastOnePublicPhoto_shouldSetHasPublicPhotoTrue() {
+            // given
+            val places = listOf(createPlace(1L, "맛집1", PlaceType.RESTAURANT))
+            every { placeRepository.findAll() } returns places
+            every { photoService.findEntityIdsWithPhotos(any(), any()) } returns setOf(1L)
+            every { photoService.findEntityIdsWithPublicPhotos(any(), any()) } returns setOf(1L)
+
+            // when
+            val result = placeService.getMarkers(null, null, null, null, null, true)
+
+            // then
+            assertTrue(result[0].hasPhotos)
+            assertTrue(result[0].hasPublicPhoto)
+        }
     }
 
     @Nested
@@ -551,6 +625,108 @@ class PlaceServiceTest {
             // then
             verify { placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 1)) }
         }
+
+        @Test
+        fun getRecentPlaces_whenSortByCreatedAt_shouldCallSearchRecentPlaces() {
+            // given
+            every {
+                placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(sortBy = PlaceRecentSortBy.CREATED_AT), 0, 10)
+
+            // then
+            verify { placeRepository.searchRecentPlaces(any(), any(), null, null, null, true, PageRequest.of(0, 10)) }
+            verify(exactly = 0) { placeRepository.searchRecentPlacesByUpdatedAt(any(), any(), any(), any(), any(), any(), any()) }
+        }
+
+        @Test
+        fun getRecentPlaces_whenSortByUpdatedAt_shouldCallSearchRecentPlacesByUpdatedAt() {
+            // given
+            every {
+                placeRepository.searchRecentPlacesByUpdatedAt(any(), any(), null, null, null, true, PageRequest.of(0, 10))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 10), 0)
+
+            // when
+            placeService.getRecentPlaces(RecentPlacesFilter(sortBy = PlaceRecentSortBy.UPDATED_AT), 0, 10)
+
+            // then
+            verify { placeRepository.searchRecentPlacesByUpdatedAt(any(), any(), null, null, null, true, PageRequest.of(0, 10)) }
+            verify(exactly = 0) { placeRepository.searchRecentPlaces(any(), any(), any(), any(), any(), any(), any()) }
+        }
+    }
+
+    @Nested
+    @DisplayName("getPhotoHistory")
+    inner class GetPhotoHistory {
+
+        @Test
+        fun getPhotoHistory_whenPlaceStillActive_shouldFillPlaceNameFromBulkLookup() {
+            // given
+            val photo = photo(1L, entityId = 10L, isPublic = true)
+            every {
+                photoService.findAdminPlacePhotos(true, PageRequest.of(0, 20))
+            } returns PageImpl(listOf(photo), PageRequest.of(0, 20), 1)
+            every { placeRepository.findAllById(listOf(10L)) } returns listOf(createPlace(10L, "활성 맛집", PlaceType.RESTAURANT))
+
+            // when
+            val result = placeService.getPhotoHistory(true, 0, 20)
+
+            // then
+            assertEquals(1, result.totalElements)
+            assertEquals("활성 맛집", result.content[0].placeName)
+            verify(exactly = 0) { placeRepository.findByIdIncludingDeleted(any()) }
+        }
+
+        @Test
+        fun getPhotoHistory_whenPlaceSoftDeleted_shouldFallBackToFindByIdIncludingDeleted() {
+            // given
+            val photo = photo(1L, entityId = 10L, isPublic = false)
+            every {
+                photoService.findAdminPlacePhotos(null, PageRequest.of(0, 20))
+            } returns PageImpl(listOf(photo), PageRequest.of(0, 20), 1)
+            every { placeRepository.findAllById(listOf(10L)) } returns emptyList() // 활성 조회에는 안 걸림(소프트 삭제)
+            every { placeRepository.findByIdIncludingDeleted(10L) } returns
+                createPlace(10L, "삭제된 맛집", PlaceType.RESTAURANT).apply { deletedAt = LocalDateTime.now() }
+
+            // when
+            val result = placeService.getPhotoHistory(null, 0, 20)
+
+            // then
+            assertEquals("삭제된 맛집", result.content[0].placeName)
+        }
+
+        @Test
+        fun getPhotoHistory_whenPlaceNotFoundAtAll_shouldUseFallbackLabel() {
+            // given
+            val photo = photo(1L, entityId = 999L, isPublic = false)
+            every {
+                photoService.findAdminPlacePhotos(null, PageRequest.of(0, 20))
+            } returns PageImpl(listOf(photo), PageRequest.of(0, 20), 1)
+            every { placeRepository.findAllById(listOf(999L)) } returns emptyList()
+            every { placeRepository.findByIdIncludingDeleted(999L) } returns null
+
+            // when
+            val result = placeService.getPhotoHistory(null, 0, 20)
+
+            // then
+            assertEquals("(삭제된 장소)", result.content[0].placeName)
+        }
+
+        @Test
+        fun getPhotoHistory_whenSizeExceedsMax_shouldCapAt100() {
+            // given
+            every {
+                photoService.findAdminPlacePhotos(null, PageRequest.of(0, 100))
+            } returns PageImpl(emptyList(), PageRequest.of(0, 100), 0)
+
+            // when
+            placeService.getPhotoHistory(null, 0, 100000)
+
+            // then
+            verify { photoService.findAdminPlacePhotos(null, PageRequest.of(0, 100)) }
+        }
     }
 
     @Nested
@@ -684,4 +860,23 @@ class PlaceServiceTest {
             grade = grade
         )
     }
+
+    private fun photoResponse(id: Long, isPublic: Boolean): PhotoResponse = PhotoResponse(
+        id = id,
+        url = "https://pub-test.r2.dev/place/$id.jpg",
+        thumbnailUrl = "https://pub-test.r2.dev/place/${id}_thumb.jpg",
+        displayOrder = 0,
+        isPublic = isPublic
+    )
+
+    private fun photo(id: Long, entityId: Long, isPublic: Boolean): Photo = Photo(
+        id = id,
+        entityType = PhotoEntityType.PLACE,
+        entityId = entityId,
+        objectKey = "place/$id.jpg",
+        url = "https://pub-test.r2.dev/place/$id.jpg",
+        thumbnailObjectKey = "place/${id}_thumb.jpg",
+        thumbnailUrl = "https://pub-test.r2.dev/place/${id}_thumb.jpg",
+        isPublic = isPublic
+    )
 }

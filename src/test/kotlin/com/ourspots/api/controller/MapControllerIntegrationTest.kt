@@ -100,18 +100,19 @@ class MapControllerIntegrationTest {
                 .andExpect(jsonPath("$.data[0].name").value("맛집1"))
         }
 
+        // 2026-08-30: "맛집만 1등급 제한"에서 "공개 타입 전부 1등급 제한"으로 정책 확장
         @Test
-        fun getMarkers_whenNotAuthenticated_shouldOnlyIncludeGrade1Restaurants() {
+        fun getMarkers_whenNotAuthenticated_shouldOnlyIncludeGrade1AcrossAllPublicTypes() {
             createTestPlace("찐맛집", PlaceType.RESTAURANT, grade = 1)
             createTestPlace("괜찮은맛집", PlaceType.RESTAURANT, grade = 2)
             createTestPlace("무난한맛집", PlaceType.RESTAURANT, grade = 3)
+            createTestPlace("놀이터 1등급", PlaceType.KIDS_PLAYGROUND, grade = 1)
             createTestPlace("놀이터 3등급", PlaceType.KIDS_PLAYGROUND, grade = 3)
 
             mockMvc.perform(get("/api/map/markers"))
                 .andExpect(status().isOk)
-                // 맛집은 1등급만 남고, 다른 공개 타입(아이 놀이터)은 등급 무관하게 그대로 노출
                 .andExpect(jsonPath("$.data.length()").value(2))
-                .andExpect(jsonPath("$.data[*].name").value(org.hamcrest.Matchers.containsInAnyOrder("찐맛집", "놀이터 3등급")))
+                .andExpect(jsonPath("$.data[*].name").value(org.hamcrest.Matchers.containsInAnyOrder("찐맛집", "놀이터 1등급")))
         }
 
         @Test

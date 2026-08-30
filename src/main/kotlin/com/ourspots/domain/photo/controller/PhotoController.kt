@@ -4,11 +4,13 @@ import com.ourspots.api.dto.PhotoConfirmRequest
 import com.ourspots.api.dto.PhotoPresignRequest
 import com.ourspots.api.dto.PhotoPresignResponse
 import com.ourspots.api.dto.PhotoResponse
+import com.ourspots.api.dto.PhotoVisibilityUpdateRequest
 import com.ourspots.common.response.ApiResponse
 import com.ourspots.domain.photo.service.PhotoService
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -37,4 +39,12 @@ class PhotoController(
     fun delete(@PathVariable id: Long) {
         photoService.delete(id)
     }
+
+    // "등록 사진 이력" 화면에서 공개/비공개 전환용
+    @PatchMapping("/{id}")
+    fun updateVisibility(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: PhotoVisibilityUpdateRequest
+    ): ApiResponse<PhotoResponse> =
+        ApiResponse.success(photoService.updateVisibility(id, request.isPublic))
 }

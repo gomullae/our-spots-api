@@ -26,11 +26,24 @@ class PlaceController(
         @RequestParam(required = false) type: PlaceType?,
         @RequestParam(required = false) grade: Int?,
         @RequestParam(defaultValue = "true") includeDeleted: Boolean,
+        @RequestParam(defaultValue = "CREATED_AT") sortBy: PlaceRecentSortBy,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "10") size: Int
     ): ApiResponse<Page<PlaceResponse>> {
-        val filter = RecentPlacesFilter(startDate, endDate, keyword, type, grade, includeDeleted)
+        val filter = RecentPlacesFilter(startDate, endDate, keyword, type, grade, includeDeleted, sortBy)
         return ApiResponse.success(placeService.getRecentPlaces(filter, page, size))
+    }
+
+    // 관리자 "등록 사진 이력" 화면 전용 — 장소 사진만 대상, 공개/비공개 필터 + 등록일시 내림차순 고정
+    // (WebMvcConfig에서 /api/places/photos를 AdminOnlyInterceptor 대상에 명시적으로 등록해야
+    // GET도 인증이 걸림 — /api/places/**는 기본적으로 JwtInterceptor가 GET을 통과시키므로 주의)
+    @GetMapping("/photos")
+    fun getPhotoHistory(
+        @RequestParam(required = false) isPublic: Boolean?,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "20") size: Int
+    ): ApiResponse<Page<PhotoAdminResponse>> {
+        return ApiResponse.success(placeService.getPhotoHistory(isPublic, page, size))
     }
 
     @PostMapping("/{id}/restore")

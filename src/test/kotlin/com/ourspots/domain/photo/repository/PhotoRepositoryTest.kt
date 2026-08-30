@@ -9,8 +9,10 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager
+import org.springframework.data.domain.PageRequest
 import org.springframework.test.context.ActiveProfiles
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @DataJpaTest
 @ActiveProfiles("test")
@@ -77,14 +79,104 @@ class PhotoRepositoryTest {
         }
     }
 
-    private fun createPhoto(entityType: PhotoEntityType, entityId: Long): Photo {
+    @Nested
+    @DisplayName("findDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue")
+    inner class FindDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue {
+
+        // 마커 배지를 "사진 있음(회색)"/"공개 사진 있음(진하게)"으로 나누는 핵심 쿼리 —
+        // 비공개 사진만 있는 장소는 결과에서 빠지는지가 검증 포인트
+        @Test
+        fun findDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue_shouldExcludePrivateOnlyPlaces() {
+            createPhoto(PhotoEntityType.PLACE, 1L, isPublic = true)
+            createPhoto(PhotoEntityType.PLACE, 2L, isPublic = false) // 비공개만 있는 장소 — 제외되어야 함
+            createPhoto(PhotoEntityType.PLACE, 3L, isPublic = false)
+            createPhoto(PhotoEntityType.PLACE, 3L, isPublic = true) // 같은 장소에 비공개+공개 섞임 — 포함되어야 함
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = photoRepository.findDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue(
+                PhotoEntityType.PLACE,
+                listOf(1L, 2L, 3L)
+            )
+
+            assertEquals(setOf(1L, 3L), result)
+        }
+
+        @Test
+        fun findDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue_whenEmptyIds_shouldReturnEmpty() {
+            createPhoto(PhotoEntityType.PLACE, 1L, isPublic = true)
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = photoRepository.findDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue(PhotoEntityType.PLACE, emptyList())
+
+            assertEquals(emptySet(), result)
+        }
+    }
+
+    @Nested
+    @DisplayName("findByEntityTypeAndIsPublicOptional")
+    inner class FindByEntityTypeAndIsPublicOptional {
+
+        // 관리자 "등록 사진 이력" 화면 전용 쿼리 — isPublic=null(전체)/true(공개)/false(비공개) 세 갈래 필터링과
+        // entityType 혼선 없는지, 등록일시 내림차순 정렬까지 함께 검증
+        @Test
+        fun findByEntityTypeAndIsPublicOptional_whenIsPublicNull_shouldReturnAllOrderedByCreatedAtDesc() {
+            val older = createPhoto(PhotoEntityType.PLACE, 1L, isPublic = true)
+            entityManager.flush()
+            val newer = createPhoto(PhotoEntityType.PLACE, 2L, isPublic = false)
+            createPhoto(PhotoEntityType.SCHEDULE_EVENT, 1L, isPublic = true) // 다른 entityType — 결과에서 제외돼야 함
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = photoRepository.findByEntityTypeAndIsPublicOptional(
+                PhotoEntityType.PLACE.name, null, PageRequest.of(0, 10)
+            )
+
+            assertEquals(2, result.totalElements)
+            assertEquals(listOf(newer.id, older.id), result.content.map { it.id }) // 최신 등록분이 먼저
+        }
+
+        @Test
+        fun findByEntityTypeAndIsPublicOptional_whenIsPublicTrue_shouldReturnOnlyPublic() {
+            createPhoto(PhotoEntityType.PLACE, 1L, isPublic = true)
+            createPhoto(PhotoEntityType.PLACE, 2L, isPublic = false)
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = photoRepository.findByEntityTypeAndIsPublicOptional(
+                PhotoEntityType.PLACE.name, true, PageRequest.of(0, 10)
+            )
+
+            assertEquals(1, result.totalElements)
+            assertTrue(result.content.all { it.isPublic })
+        }
+
+        @Test
+        fun findByEntityTypeAndIsPublicOptional_whenIsPublicFalse_shouldReturnOnlyPrivate() {
+            createPhoto(PhotoEntityType.PLACE, 1L, isPublic = true)
+            createPhoto(PhotoEntityType.PLACE, 2L, isPublic = false)
+            entityManager.flush()
+            entityManager.clear()
+
+            val result = photoRepository.findByEntityTypeAndIsPublicOptional(
+                PhotoEntityType.PLACE.name, false, PageRequest.of(0, 10)
+            )
+
+            assertEquals(1, result.totalElements)
+            assertTrue(result.content.none { it.isPublic })
+        }
+    }
+
+    private fun createPhoto(entityType: PhotoEntityType, entityId: Long, isPublic: Boolean = false): Photo {
         val photo = Photo(
             entityType = entityType,
             entityId = entityId,
             objectKey = "place/${entityType}_$entityId.jpg",
             url = "https://pub-test.r2.dev/place/${entityType}_$entityId.jpg",
             thumbnailObjectKey = "place/${entityType}_${entityId}_thumb.jpg",
-            thumbnailUrl = "https://pub-test.r2.dev/place/${entityType}_${entityId}_thumb.jpg"
+            thumbnailUrl = "https://pub-test.r2.dev/place/${entityType}_${entityId}_thumb.jpg",
+            isPublic = isPublic
         )
         return entityManager.persist(photo)
     }

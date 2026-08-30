@@ -181,22 +181,25 @@ class PlaceRepositoryTest {
             assertEquals("찐맛집", result[0].name)
         }
 
+        // 2026-08-30: "맛집만 1등급 제한"에서 "공개 타입 전부 1등급 제한"으로 정책 확장
         @Test
-        fun findPublicMarkers_whenKidsPlaygroundOrRelaxation_shouldIncludeAllGrades() {
-            // given — 맛집만 1등급 제한, 아이 놀이터/아빠의 시간은 등급 무관하게 다 노출
+        fun findPublicMarkers_whenKidsPlaygroundOrRelaxation_shouldOnlyIncludeGrade1() {
+            // given
             createPlace("놀이터 1등급", PlaceType.KIDS_PLAYGROUND, grade = 1)
             createPlace("놀이터 3등급", PlaceType.KIDS_PLAYGROUND, grade = 3)
+            createPlace("휴식처 1등급", PlaceType.RELAXATION, grade = 1)
             createPlace("휴식처 2등급", PlaceType.RELAXATION, grade = 2)
 
             // when
             val result = search()
 
             // then
-            assertEquals(3, result.size)
+            assertEquals(2, result.size)
+            assertTrue(result.all { it.grade == 1 })
         }
 
         @Test
-        fun findPublicMarkers_whenTypeSpecified_shouldFilterAndStillApplyRestaurantGradeRule() {
+        fun findPublicMarkers_whenTypeSpecified_shouldFilterAndStillApplyGrade1Rule() {
             // given
             createPlace("찐맛집", PlaceType.RESTAURANT, grade = 1)
             createPlace("괜찮은맛집", PlaceType.RESTAURANT, grade = 2)
@@ -572,6 +575,89 @@ class PlaceRepositoryTest {
     }
 
     @Nested
+    @DisplayName("searchRecentPlacesByUpdatedAt")
+    inner class SearchRecentPlacesByUpdatedAt {
+
+        private val start: LocalDateTime = LocalDateTime.now().minusMonths(3)
+        private val end: LocalDateTime = LocalDateTime.now().plusDays(1)
+
+        private fun search(
+            keyword: String? = null,
+            type: String? = null,
+            grade: Int? = null,
+            includeDeleted: Boolean = true,
+            page: Int = 0,
+            size: Int = 10
+        ) = placeRepository.searchRecentPlacesByUpdatedAt(start, end, keyword, type, grade, includeDeleted, PageRequest.of(page, size))
+
+        // 정렬 기준(updatedAt)이 createdAt 순서와 실제로 달라지는지가 핵심 검증 포인트
+        @Test
+        fun searchRecentPlacesByUpdatedAt_shouldOrderByUpdatedAtDescRegardlessOfCreatedAtOrder() {
+            // given: A는 먼저 등록됐지만 나중에 수정됨 / B는 나중에 등록됐지만 더 먼저(과거에) 수정됨
+            createPlace(
+                "A", PlaceType.RESTAURANT,
+                createdAt = LocalDateTime.now().minusDays(2),
+                updatedAt = LocalDateTime.now().minusHours(1)
+            )
+            createPlace(
+                "B", PlaceType.RESTAURANT,
+                createdAt = LocalDateTime.now().minusDays(1),
+                updatedAt = LocalDateTime.now().minusDays(3)
+            )
+
+            // when
+            val byUpdatedAt = search()
+
+            // then: 등록일시 기준이면 B가 먼저지만, 수정일시 기준이므로 A가 먼저
+            assertEquals(listOf("A", "B"), byUpdatedAt.content.map { it.name })
+        }
+
+        // 기간 필터의 기준 컬럼도 updated_at으로 바뀌었는지 검증 (2026-08-30 수정) — createdAt은 범위 안이어도
+        // updatedAt이 범위 밖이면 제외되고, 반대로 createdAt이 범위 밖이어도 updatedAt이 범위 안이면 포함돼야 함
+        @Test
+        fun searchRecentPlacesByUpdatedAt_whenUpdatedAtOutsideRangeButCreatedAtInside_shouldExclude() {
+            // given
+            createPlace(
+                "최근 등록, 오래전 수정", PlaceType.RESTAURANT,
+                createdAt = LocalDateTime.now().minusDays(1),
+                updatedAt = LocalDateTime.now().minusMonths(4)
+            )
+
+            // when & then
+            assertEquals(0, search().totalElements)
+        }
+
+        @Test
+        fun searchRecentPlacesByUpdatedAt_whenUpdatedAtInsideRangeButCreatedAtOutside_shouldInclude() {
+            // given
+            createPlace(
+                "오래된 등록, 최근 수정", PlaceType.RESTAURANT,
+                createdAt = LocalDateTime.now().minusMonths(4),
+                updatedAt = LocalDateTime.now().minusDays(1)
+            )
+
+            // when & then
+            val result = search()
+            assertEquals(1, result.totalElements)
+            assertEquals("오래된 등록, 최근 수정", result.content[0].name)
+        }
+
+        @Test
+        fun searchRecentPlacesByUpdatedAt_whenKeywordSpecified_shouldStillFilter() {
+            // given: WHERE 절(기간/키워드 등)은 그대로 공유되는지 최소한으로만 재확인
+            createPlace("스타벅스 강남점", PlaceType.RESTAURANT)
+            createPlace("이디야 커피", PlaceType.RESTAURANT)
+
+            // when
+            val result = search(keyword = "스타벅스")
+
+            // then
+            assertEquals(1, result.totalElements)
+            assertEquals("스타벅스 강남점", result.content[0].name)
+        }
+    }
+
+    @Nested
     @DisplayName("findByIdIncludingDeleted")
     inner class FindByIdIncludingDeleted {
 
@@ -607,7 +693,8 @@ class PlaceRepositoryTest {
         googleRating: Double? = null,
         googleRatingFailCount: Int = 0,
         googleRatingUpdatedAt: LocalDateTime? = null,
-        createdAt: LocalDateTime = LocalDateTime.now()
+        createdAt: LocalDateTime = LocalDateTime.now(),
+        updatedAt: LocalDateTime = LocalDateTime.now()
     ): Place {
         val place = Place(
             name = name,
@@ -619,7 +706,8 @@ class PlaceRepositoryTest {
             googleRating = googleRating,
             googleRatingFailCount = googleRatingFailCount,
             googleRatingUpdatedAt = googleRatingUpdatedAt,
-            createdAt = createdAt
+            createdAt = createdAt,
+            updatedAt = updatedAt
         )
         entityManager.persist(place)
         entityManager.flush()

@@ -10,6 +10,8 @@ import com.ourspots.domain.photo.entity.PhotoEntityType
 import com.ourspots.domain.photo.repository.PhotoRepository
 import com.ourspots.domain.schedule.repository.ScheduleEventRepository
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
@@ -81,10 +83,24 @@ class PhotoService(
             url = "$publicUrl/${request.objectKey}",
             thumbnailObjectKey = request.thumbnailObjectKey,
             thumbnailUrl = "$publicUrl/${request.thumbnailObjectKey}",
-            displayOrder = nextOrder
+            displayOrder = nextOrder,
+            // 새 사진은 항상 비공개로 시작 — 클라이언트가 요청 바디로 공개 여부를 지정할 수 없게
+            // PhotoConfirmRequest에 아예 그 필드를 안 두고 여기서 고정값으로 넣음
+            isPublic = false
         )
         val saved = photoRepository.save(photo)
         touchParentIfNeeded(request.entityType, request.entityId)
+        return PhotoResponse.from(saved)
+    }
+
+    // 관리자가 "등록 사진 이력"에서 공개/비공개를 전환 — 사진 유무 자체를 바꾸는 게 아니라 노출 범위만 바꾸는
+    // 것이므로 R2 파일이나 URL은 손대지 않음
+    @Transactional
+    fun updateVisibility(id: Long, isPublic: Boolean): PhotoResponse {
+        val photo = photoRepository.findByIdOrThrow(id, "Photo")
+        photo.isPublic = isPublic
+        val saved = photoRepository.save(photo)
+        touchParentIfNeeded(photo.entityType, photo.entityId)
         return PhotoResponse.from(saved)
     }
 
@@ -103,6 +119,17 @@ class PhotoService(
         if (entityIds.isEmpty()) return emptySet()
         return photoRepository.findDistinctEntityIdByEntityTypeAndEntityIdIn(entityType, entityIds)
     }
+
+    // 마커 배지를 "사진은 있지만 전부 비공개"(회색)와 "공개 사진 있음"(진하게)으로 구분하기 위한 벌크 조회
+    fun findEntityIdsWithPublicPhotos(entityType: PhotoEntityType, entityIds: Collection<Long>): Set<Long> {
+        if (entityIds.isEmpty()) return emptySet()
+        return photoRepository.findDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue(entityType, entityIds)
+    }
+
+    // 관리자 "등록 사진 이력" 화면 전용 — 장소 사진만 대상(PhotoEntityType.PLACE 고정), 장소명은 이 서비스가
+    // Place를 몰라도 되게 호출부(PlaceService)가 별도로 채워 넣음
+    fun findAdminPlacePhotos(isPublic: Boolean?, pageable: Pageable): Page<Photo> =
+        photoRepository.findByEntityTypeAndIsPublicOptional(PhotoEntityType.PLACE.name, isPublic, pageable)
 
     // 소프트 삭제라 R2 파일은 안 지움(Photo 엔티티의 @SQLDelete가 deleteById()를 UPDATE deleted_at으로 바꿔치기함) —
     // 실수/버그로 삭제돼도 파일이 그대로 남아있어 데이터 유실이 안 생김. 외부 API 호출이 없어졌으니 NOT_SUPPORTED도 불필요

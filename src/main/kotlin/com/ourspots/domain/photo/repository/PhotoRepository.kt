@@ -2,6 +2,8 @@ package com.ourspots.domain.photo.repository
 
 import com.ourspots.domain.photo.entity.Photo
 import com.ourspots.domain.photo.entity.PhotoEntityType
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 
@@ -17,4 +19,18 @@ interface PhotoRepository : JpaRepository<Photo, Long> {
     // 명시적 JPQL로 바꿔서 entityId 하나만 확실하게 선택하도록 고정
     @Query("SELECT DISTINCT p.entityId FROM Photo p WHERE p.entityType = :entityType AND p.entityId IN :entityIds")
     fun findDistinctEntityIdByEntityTypeAndEntityIdIn(entityType: PhotoEntityType, entityIds: Collection<Long>): Set<Long>
+
+    // 마커 배지를 "사진 있음(회색)"과 "공개 사진 있음(진하게)"으로 구분하기 위한 전용 쿼리 —
+    // 위 findDistinctEntityIdByEntityTypeAndEntityIdIn과 동일한 이유로 명시적 JPQL 사용
+    @Query("SELECT DISTINCT p.entityId FROM Photo p WHERE p.entityType = :entityType AND p.entityId IN :entityIds AND p.isPublic = true")
+    fun findDistinctEntityIdByEntityTypeAndEntityIdInAndIsPublicTrue(entityType: PhotoEntityType, entityIds: Collection<Long>): Set<Long>
+
+    // 관리자 "등록 사진 이력" 화면 전용 — entityType은 호출부(PhotoService)가 항상 PLACE로 고정해서 넘김,
+    // isPublic은 null이면 전체/true면 공개/false면 비공개. 네이티브 쿼리라 entityType도 String으로 바인딩
+    @Query(
+        value = "SELECT * FROM photos WHERE entity_type = :entityType AND (:isPublic IS NULL OR is_public = :isPublic) ORDER BY created_at DESC",
+        countQuery = "SELECT count(*) FROM photos WHERE entity_type = :entityType AND (:isPublic IS NULL OR is_public = :isPublic)",
+        nativeQuery = true
+    )
+    fun findByEntityTypeAndIsPublicOptional(entityType: String, isPublic: Boolean?, pageable: Pageable): Page<Photo>
 }

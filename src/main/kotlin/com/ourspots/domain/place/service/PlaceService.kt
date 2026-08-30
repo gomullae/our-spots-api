@@ -32,6 +32,7 @@ class PlaceService(
     companion object {
         // 관리자 화면이라 실제 악용 위협은 낮지만, 실수로 size=100000 같은 값을 보내 큰 쿼리를 유발하는 것을 방지
         private const val MAX_RECENT_PLACES_SIZE = 100
+        private const val MAX_PHOTO_HISTORY_SIZE = 100
     }
 
     // 개인 카테고리(나의 발자취 등)는 비인증 사용자에게 노출되면 안 됨 — getPlace/getMarkers 공통 규칙
@@ -47,7 +48,10 @@ class PlaceService(
         if (isHiddenFromUser(place.type, authenticated)) {
             throw NotFoundException("Place not found: $id")
         }
-        return PlaceResponse.from(place, photoService.listByEntity(PhotoEntityType.PLACE, place.id))
+        val photos = photoService.listByEntity(PhotoEntityType.PLACE, place.id)
+            // 비로그인 사용자에겐 비공개 사진을 아예 응답에서 제외 — 프론트 숨김이 아니라 데이터 자체를 안 내려줌
+            .let { if (authenticated) it else it.filter { photo -> photo.isPublic } }
+        return PlaceResponse.from(place, photos)
     }
 
     @Transactional
@@ -99,10 +103,31 @@ class PlaceService(
         val end = (filter.endDate ?: LocalDate.now()).plusDays(1).atStartOfDay()
         val keyword = filter.keyword?.trim()?.takeIf { it.isNotEmpty() }?.let { escapeLikePattern(it) }
         val cappedSize = size.coerceIn(1, MAX_RECENT_PLACES_SIZE)
-        val placesPage = placeRepository
-            .searchRecentPlaces(start, end, keyword, filter.type?.name, filter.grade, filter.includeDeleted, PageRequest.of(page, cappedSize))
+        val pageable = PageRequest.of(page, cappedSize)
+        val placesPage = when (filter.sortBy) {
+            PlaceRecentSortBy.CREATED_AT ->
+                placeRepository.searchRecentPlaces(start, end, keyword, filter.type?.name, filter.grade, filter.includeDeleted, pageable)
+            PlaceRecentSortBy.UPDATED_AT ->
+                placeRepository.searchRecentPlacesByUpdatedAt(start, end, keyword, filter.type?.name, filter.grade, filter.includeDeleted, pageable)
+        }
         val photosByPlaceId = photoService.listByEntities(PhotoEntityType.PLACE, placesPage.content.map { it.id })
         return placesPage.map { PlaceResponse.from(it, photosByPlaceId[it.id] ?: emptyList()) }
+    }
+
+    // 관리자 "등록 사진 이력" 화면 전용 — 장소 사진만 대상, 등록일시 내림차순 고정(정렬 옵션 없음).
+    // 사진은 Place와 FK가 없어서 장소명을 여기서 직접 채워 넣음 — 대부분은 활성 장소라 findAllById로
+    // 한 번에 벌크 조회하고, 소프트 삭제/삭제된 장소만 건별로 findByIdIncludingDeleted로 보완 조회
+    fun getPhotoHistory(isPublic: Boolean?, page: Int, size: Int): Page<PhotoAdminResponse> {
+        val cappedSize = size.coerceIn(1, MAX_PHOTO_HISTORY_SIZE)
+        val photosPage = photoService.findAdminPlacePhotos(isPublic, PageRequest.of(page, cappedSize))
+        val placeIds = photosPage.content.map { it.entityId }.distinct()
+        val activePlaceNamesById = placeRepository.findAllById(placeIds).associate { it.id to it.name }
+        return photosPage.map { photo ->
+            val placeName = activePlaceNamesById[photo.entityId]
+                ?: placeRepository.findByIdIncludingDeleted(photo.entityId)?.name
+                ?: "(삭제된 장소)"
+            PhotoAdminResponse.from(photo, placeName)
+        }
     }
 
     @Transactional
@@ -171,7 +196,11 @@ class PlaceService(
                 else -> placeRepository.findAll()
             }
         }
-        val placeIdsWithPhotos = photoService.findEntityIdsWithPhotos(PhotoEntityType.PLACE, places.map { it.id })
-        return places.map { MarkerResponse.from(it, hasPhotos = it.id in placeIdsWithPhotos) }
+        val placeIds = places.map { it.id }
+        val placeIdsWithPhotos = photoService.findEntityIdsWithPhotos(PhotoEntityType.PLACE, placeIds)
+        val placeIdsWithPublicPhotos = photoService.findEntityIdsWithPublicPhotos(PhotoEntityType.PLACE, placeIds)
+        return places.map {
+            MarkerResponse.from(it, hasPhotos = it.id in placeIdsWithPhotos, hasPublicPhoto = it.id in placeIdsWithPublicPhotos)
+        }
     }
 }

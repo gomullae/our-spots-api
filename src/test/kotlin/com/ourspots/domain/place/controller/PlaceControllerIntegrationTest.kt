@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.ourspots.api.dto.PlaceCreateRequest
 import com.ourspots.api.dto.PlaceUpdateRequest
 import com.ourspots.domain.auth.controller.LoginRequest
+import com.ourspots.domain.photo.entity.Photo
+import com.ourspots.domain.photo.entity.PhotoEntityType
+import com.ourspots.domain.photo.repository.PhotoRepository
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
 import com.ourspots.domain.place.repository.PlaceRepository
@@ -35,6 +38,9 @@ class PlaceControllerIntegrationTest {
     private lateinit var placeRepository: PlaceRepository
 
     @Autowired
+    private lateinit var photoRepository: PhotoRepository
+
+    @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
 
     private lateinit var authToken: String
@@ -58,6 +64,7 @@ class PlaceControllerIntegrationTest {
     fun setUp() {
         // deleteAll()은 @SQLDelete 때문에 소프트 삭제(UPDATE)로 바뀌고, deleteAllInBatch()도 @SQLRestriction이 적용돼
         // "deleted_at IS NULL"인 행만 지워짐(이미 소프트 삭제된 행은 안 지워짐) → JDBC로 직접 물리 삭제
+        jdbcTemplate.update("DELETE FROM photos")
         jdbcTemplate.update("DELETE FROM places")
     }
 
@@ -332,6 +339,141 @@ class PlaceControllerIntegrationTest {
             )
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.content.length()").value(3))
+        }
+
+        @Test
+        fun getRecentPlaces_whenSortByUpdatedAt_shouldOrderByLastModifiedFirst() {
+            // given: A가 먼저 등록되지만, 나중에 B보다 늦게 수정됨(PUT으로 updatedAt 갱신)
+            val placeA = createTestPlace("A", PlaceType.RESTAURANT)
+            createTestPlace("B", PlaceType.RESTAURANT)
+            mockMvc.perform(
+                put("/api/places/${placeA.id}")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(PlaceUpdateRequest(description = "수정")))
+            ).andExpect(status().isOk)
+
+            // when & then: 등록일시 기준(기본값)이면 B가 먼저, 수정일시 기준이면 A가 먼저
+            mockMvc.perform(
+                get("/api/places/recent")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content[0].name").value("B"))
+
+            mockMvc.perform(
+                get("/api/places/recent")
+                    .param("sortBy", "UPDATED_AT")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content[0].name").value("A"))
+        }
+
+        @Test
+        fun getRecentPlaces_whenSortByUpdatedAt_shouldFilterPeriodByUpdatedAtNotCreatedAt() {
+            // given: 등록은 오래 전(기간 필터 기본값인 최근 3개월 밖)이지만, 방금 PUT으로 수정됨
+            val place = placeRepository.save(
+                Place(
+                    name = "오래전 등록, 방금 수정",
+                    type = PlaceType.RESTAURANT,
+                    address = "서울시 테스트구",
+                    latitude = 37.5,
+                    longitude = 127.0,
+                    createdAt = LocalDateTime.now().minusMonths(4)
+                )
+            )
+            mockMvc.perform(
+                put("/api/places/${place.id}")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(PlaceUpdateRequest(description = "수정")))
+            ).andExpect(status().isOk)
+
+            // when & then: 등록일시 기준(기본값)으로는 기간 밖이라 안 보이지만, 수정일시순으로 보면 방금
+            // 수정됐으니 기본 기간(최근 3개월)에 걸려서 보여야 함
+            mockMvc.perform(
+                get("/api/places/recent")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content.length()").value(0))
+
+            mockMvc.perform(
+                get("/api/places/recent")
+                    .param("sortBy", "UPDATED_AT")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].name").value("오래전 등록, 방금 수정"))
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /api/places/photos")
+    inner class GetPhotoHistory {
+
+        @Test
+        fun getPhotoHistory_whenNotAuthenticated_shouldReturn401() {
+            // AdminOnlyInterceptor가 /api/places/photos를 명시적으로 등록해서 GET도 인증을 요구하는지 확인
+            // (등록을 빠뜨리면 /api/places/**의 JwtInterceptor가 GET을 통과시켜 공개로 노출됨)
+            mockMvc.perform(get("/api/places/photos"))
+                .andExpect(status().isUnauthorized)
+        }
+
+        @Test
+        fun getPhotoHistory_whenNoFilter_shouldReturnAllOrderedByCreatedAtDesc() {
+            // given
+            val place = createTestPlace("맛집", PlaceType.RESTAURANT)
+            createTestPhoto(place.id, isPublic = true)
+            createTestPhoto(place.id, isPublic = false)
+
+            // when & then
+            mockMvc.perform(
+                get("/api/places/photos")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content.length()").value(2))
+                .andExpect(jsonPath("$.data.content[0].placeName").value("맛집"))
+        }
+
+        @Test
+        fun getPhotoHistory_whenIsPublicTrue_shouldReturnOnlyPublicPhotos() {
+            // given
+            val place = createTestPlace("맛집", PlaceType.RESTAURANT)
+            createTestPhoto(place.id, isPublic = true)
+            createTestPhoto(place.id, isPublic = false)
+
+            // when & then
+            mockMvc.perform(
+                get("/api/places/photos")
+                    .param("isPublic", "true")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content.length()").value(1))
+                .andExpect(jsonPath("$.data.content[0].isPublic").value(true))
+        }
+
+        @Test
+        fun getPhotoHistory_whenPlaceSoftDeleted_shouldStillShowPlaceName() {
+            // given
+            val place = createTestPlace("삭제될 맛집", PlaceType.RESTAURANT)
+            createTestPhoto(place.id, isPublic = true)
+            mockMvc.perform(
+                delete("/api/places/${place.id}")
+                    .header("Authorization", "Bearer $authToken")
+            ).andExpect(status().isNoContent)
+
+            // when & then
+            mockMvc.perform(
+                get("/api/places/photos")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content[0].placeName").value("삭제될 맛집"))
         }
     }
 
@@ -643,6 +785,20 @@ class PlaceControllerIntegrationTest {
                 latitude = 37.5,
                 longitude = 127.0,
                 grade = 1
+            )
+        )
+    }
+
+    private fun createTestPhoto(placeId: Long, isPublic: Boolean): Photo {
+        return photoRepository.save(
+            Photo(
+                entityType = PhotoEntityType.PLACE,
+                entityId = placeId,
+                objectKey = "place/$placeId.jpg",
+                url = "https://pub-test.r2.dev/place/$placeId.jpg",
+                thumbnailObjectKey = "place/${placeId}_thumb.jpg",
+                thumbnailUrl = "https://pub-test.r2.dev/place/${placeId}_thumb.jpg",
+                isPublic = isPublic
             )
         )
     }

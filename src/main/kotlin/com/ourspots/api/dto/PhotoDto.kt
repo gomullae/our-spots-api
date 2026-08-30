@@ -3,8 +3,10 @@ package com.ourspots.api.dto
 import com.ourspots.domain.photo.entity.Photo
 import com.ourspots.domain.photo.entity.PhotoEntityType
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Positive
+import java.time.LocalDateTime
 
 data class PhotoPresignRequest(
     val entityType: PhotoEntityType,
@@ -30,7 +32,8 @@ data class PhotoResponse(
     val id: Long,
     val url: String,
     val thumbnailUrl: String,
-    val displayOrder: Int
+    val displayOrder: Int,
+    val isPublic: Boolean
 ) {
     companion object {
         fun from(photo: Photo) = PhotoResponse(
@@ -38,7 +41,36 @@ data class PhotoResponse(
             url = photo.url,
             // 이 기능 추가 전에 업로드된 사진은 thumbnailUrl이 빈 문자열이라 프론트가 원본(url)으로 대체 표시함
             thumbnailUrl = photo.thumbnailUrl,
-            displayOrder = photo.displayOrder
+            displayOrder = photo.displayOrder,
+            isPublic = photo.isPublic
+        )
+    }
+}
+
+data class PhotoVisibilityUpdateRequest(
+    @field:NotNull val isPublic: Boolean
+)
+
+// 관리자 "등록 사진 이력" 화면 전용 — Photo는 Place와 FK 없이 연결돼있어서 장소명을 PlaceService가
+// 별도로 조회해서 채워줌(PhotoResponse와 분리한 이유)
+data class PhotoAdminResponse(
+    val id: Long,
+    val placeId: Long,
+    val placeName: String,
+    val url: String,
+    val thumbnailUrl: String,
+    val isPublic: Boolean,
+    val createdAt: LocalDateTime
+) {
+    companion object {
+        fun from(photo: Photo, placeName: String) = PhotoAdminResponse(
+            id = photo.id,
+            placeId = photo.entityId,
+            placeName = placeName,
+            url = photo.url,
+            thumbnailUrl = photo.thumbnailUrl,
+            isPublic = photo.isPublic,
+            createdAt = photo.createdAt
         )
     }
 }
