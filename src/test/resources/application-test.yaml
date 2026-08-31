@@ -27,3 +27,6 @@ app:
     account-id: test-account-id
     access-key-id: test-access-key-id
     secret-access-key: test-secret-access-key
+  # 테스트 전용 키 — 실제 운영 키와 무관, 아무 32바이트(base64)면 됨
+  household:
+    encryption-key: 1ABgNEcfgr3YcAQtYU/qbzO11vuJziV69pZs2eZ2CnU=

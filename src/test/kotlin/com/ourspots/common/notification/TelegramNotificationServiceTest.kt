@@ -406,4 +406,197 @@ class TelegramNotificationServiceTest {
             assertTrue(capturedText().contains("메모: 1시간반 → (없음)"))
         }
     }
+
+    // 테스트 전반에서 label/amount만 바뀌고 나머지는 그대로인 기본 요약을 자주 써서 헬퍼로 뺌
+    private fun fixedCostSummary(
+        label: String = "통신비",
+        vendor: String? = "SKT",
+        amount: Long = 33_250L,
+        payerLabel: String? = "초영",
+        debitDay: Int? = 10,
+        memo: String? = null
+    ) = HouseholdItemSummary(
+        sectionLabel = "고정비",
+        label = label,
+        vendor = vendor,
+        amount = amount,
+        payerLabel = payerLabel,
+        debitDay = debitDay,
+        memo = memo
+    )
+
+    @Nested
+    @DisplayName("notifyHouseholdItemCreated")
+    inner class NotifyHouseholdItemCreated {
+
+        @Test
+        fun notifyHouseholdItemCreated_shouldIncludeAllFields() {
+            val service = newService()
+
+            service.notifyHouseholdItemCreated(fixedCostSummary(memo = "메모입니다"))
+
+            val text = capturedText()
+            assertTrue(text.contains("가계 현황 추가"))
+            assertTrue(text.contains("[고정비]"))
+            assertTrue(text.contains("통신비 33,250원"))
+            assertTrue(text.contains("업체명: SKT"))
+            assertTrue(text.contains("대상자: 초영"))
+            assertTrue(text.contains("이체일: 10일"))
+            assertTrue(text.contains("비고: 메모입니다"))
+        }
+
+        @Test
+        fun notifyHouseholdItemCreated_whenOptionalFieldsMissing_shouldOmitThoseLines() {
+            val service = newService()
+
+            service.notifyHouseholdItemCreated(
+                HouseholdItemSummary(
+                    sectionLabel = "수입",
+                    label = "급여",
+                    vendor = null,
+                    amount = 5_700_000L,
+                    payerLabel = null,
+                    debitDay = null,
+                    memo = null
+                )
+            )
+
+            val text = capturedText()
+            assertFalse(text.contains("대상자:"))
+            assertFalse(text.contains("이체일:"))
+            assertFalse(text.contains("비고:"))
+        }
+
+        @Test
+        fun notifyHouseholdItemCreated_whenExpenseChatIdConfigured_shouldSendThere() {
+            val service = newService(chatId = "default-chat", expenseChatId = "expense-group-chat")
+
+            service.notifyHouseholdItemCreated(
+                HouseholdItemSummary(
+                    sectionLabel = "수입",
+                    label = "급여",
+                    vendor = null,
+                    amount = 5_700_000L,
+                    payerLabel = null,
+                    debitDay = null,
+                    memo = null
+                )
+            )
+
+            assertEquals("expense-group-chat", capturedBody()["chat_id"])
+        }
+    }
+
+    @Nested
+    @DisplayName("notifyHouseholdItemUpdated")
+    inner class NotifyHouseholdItemUpdated {
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenAmountChanged_shouldShowArrow() {
+            val service = newService()
+
+            service.notifyHouseholdItemUpdated(fixedCostSummary(amount = 33_250L), fixedCostSummary(amount = 35_000L))
+
+            val text = capturedText()
+            assertTrue(text.contains("통신비: 33,250원 → 35,000원"))
+        }
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenOnlyAmountChanged_shouldStillShowUnchangedFields() {
+            // 안 바뀐 필드도 값이 있으면 항상 보여줌(일정 수정 알림과 동일한 방식) — 바뀐 필드만
+            // 골라 보여주지 않고, 어떤 항목들이 있는지 전체 맥락을 같이 보여달라는 요청 반영
+            val service = newService()
+
+            service.notifyHouseholdItemUpdated(fixedCostSummary(amount = 33_250L), fixedCostSummary(amount = 35_000L))
+
+            val text = capturedText()
+            assertTrue(text.contains("업체명: SKT"))
+            assertTrue(text.contains("대상자: 초영"))
+            assertTrue(text.contains("이체일: 10일"))
+        }
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenBothMemoNull_shouldOmitMemoLine() {
+            val service = newService()
+
+            service.notifyHouseholdItemUpdated(fixedCostSummary(memo = null), fixedCostSummary(amount = 35_000L, memo = null))
+
+            assertFalse(capturedText().contains("비고:"))
+        }
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenNothingChanged_shouldNotSend() {
+            val service = newService()
+            val summary = fixedCostSummary()
+
+            service.notifyHouseholdItemUpdated(summary, summary.copy())
+
+            verify(exactly = 0) { restTemplate.postForObject(any<String>(), any(), String::class.java) }
+        }
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenVendorChanged_shouldShowArrow() {
+            val service = newService()
+
+            service.notifyHouseholdItemUpdated(fixedCostSummary(vendor = "SKT"), fixedCostSummary(vendor = "KT"))
+
+            assertTrue(capturedText().contains("업체명: SKT → KT"))
+        }
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenPayerChanged_shouldShowArrow() {
+            val service = newService()
+
+            service.notifyHouseholdItemUpdated(fixedCostSummary(payerLabel = "초영"), fixedCostSummary(payerLabel = "진우"))
+
+            assertTrue(capturedText().contains("대상자: 초영 → 진우"))
+        }
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenDebitDayChanged_shouldShowArrow() {
+            val service = newService()
+
+            service.notifyHouseholdItemUpdated(fixedCostSummary(debitDay = 10), fixedCostSummary(debitDay = 15))
+
+            assertTrue(capturedText().contains("이체일: 10일 → 15일"))
+        }
+
+        @Test
+        fun notifyHouseholdItemUpdated_whenMemoChanged_shouldShowArrow() {
+            val service = newService()
+
+            service.notifyHouseholdItemUpdated(fixedCostSummary(memo = null), fixedCostSummary(memo = "새 메모"))
+
+            assertTrue(capturedText().contains("비고: - → 새 메모"))
+        }
+    }
+
+    @Nested
+    @DisplayName("notifyHouseholdItemDeleted")
+    inner class NotifyHouseholdItemDeleted {
+
+        @Test
+        fun notifyHouseholdItemDeleted_shouldIncludeAllFields() {
+            val service = newService()
+
+            service.notifyHouseholdItemDeleted(
+                HouseholdItemSummary(
+                    sectionLabel = "구독료",
+                    label = "티빙몰 구독",
+                    vendor = null,
+                    amount = 9_850L,
+                    payerLabel = null,
+                    debitDay = 6,
+                    memo = "매년 6/7 결제"
+                )
+            )
+
+            val text = capturedText()
+            assertTrue(text.contains("가계 현황 삭제"))
+            assertTrue(text.contains("[구독료]"))
+            assertTrue(text.contains("티빙몰 구독 9,850원"))
+            assertTrue(text.contains("이체일: 6일"))
+            assertTrue(text.contains("비고: 매년 6/7 결제"))
+        }
+    }
 }

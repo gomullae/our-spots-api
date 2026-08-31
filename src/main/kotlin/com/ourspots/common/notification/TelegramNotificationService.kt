@@ -18,6 +18,20 @@ data class CategorySpend(val total: Long, val jinwooTotal: Long, val choyoungTot
 // 일정 알림용 사람이 읽는 형태로 이미 가공된 값 — ScheduleCategory 등 도메인 타입을 common 계층에 끌어들이지 않기 위해 라벨/날짜 포맷은 호출부(ScheduleService)가 만들어서 넘김
 data class ScheduleEventSummary(val title: String, val categoryLabel: String, val dateTimeText: String, val memo: String?)
 
+// 가계 현황(수입/고정비/자산/지출예정액/구독료) 알림용 — HouseholdSectionType/HouseholdPayer 등 도메인
+// 타입을 common 계층에 끌어들이지 않기 위해 섹션/대상자 라벨은 호출부(HouseholdBudgetService)가 만들어서
+// 넘김. 알림에 노출하는 필드를 이 7개로만 한정해서, 여기 없는 필드(자산구분/자동이체/계좌/예정월 등)의
+// 변경은 애초에 감지 대상이 아니게 함(수정 알림은 이 7개 중 실제로 바뀐 게 있을 때만 발송)
+data class HouseholdItemSummary(
+    val sectionLabel: String,
+    val label: String,
+    val vendor: String?,
+    val amount: Long,
+    val payerLabel: String?,
+    val debitDay: Int?,
+    val memo: String?
+)
+
 @Service
 class TelegramNotificationService(
     @Value("\${app.telegram.bot-token}") private val botToken: String,
@@ -159,10 +173,70 @@ class TelegramNotificationService(
         send(sb.toString().trimEnd(), chatId = scheduleChatId.ifBlank { defaultChatId })
     }
 
+    // 가계 현황 채팅방(가계부 주간 정산과 동일한 expenseChatId) — 금액은 DB엔 암호화해서 저장하지만
+    // 알림 메시지엔 당연히 복호화된 실제 숫자가 들어감(가계부 주간 정산도 이미 같은 채널에 실제 금액을 보내고 있어 기존 관례와 동일)
+    fun notifyHouseholdItemCreated(summary: HouseholdItemSummary) {
+        val sb = StringBuilder()
+        sb.append("🆕 <b>가계 현황 추가 [${escapeHtml(summary.sectionLabel)}]</b>\n")
+        sb.append("${escapeHtml(truncate(summary.label, 60))} ${format(summary.amount)}원\n")
+        summary.vendor?.let { sb.append("업체명: ${escapeHtml(truncate(it, 60))}\n") }
+        summary.payerLabel?.let { sb.append("대상자: ${escapeHtml(it)}\n") }
+        summary.debitDay?.let { sb.append("이체일: ${it}일\n") }
+        summary.memo?.let { sb.append("비고: ${escapeHtml(truncate(it, 150))}\n") }
+        send(sb.toString().trimEnd(), chatId = expenseChatId.ifBlank { defaultChatId })
+    }
+
+    // 안 바뀐 필드는 값만, 바뀐 필드는 "이전 → 이후"로 표기 — 7개 필드(구분/항목명/업체명/금액/대상자/
+    // 이체일/비고) 전부 값이 있으면 항상 표시(변경 여부와 무관, 일정 수정 알림과 동일한 방식), 값 자체가
+    // 없는 선택 필드만 그 줄이 생략됨. 이 7개 필드 중 하나도 안 바뀌었으면(즉 여기 없는 자산구분/자동이체/
+    // 계좌/예정월만 바뀌었으면) 알림 자체를 보내지 않음
+    fun notifyHouseholdItemUpdated(before: HouseholdItemSummary, after: HouseholdItemSummary) {
+        val sectionLine = diffText(escapeHtml(before.sectionLabel), escapeHtml(after.sectionLabel))
+        val labelLine = diffText(escapeHtml(truncate(before.label, 60)), escapeHtml(truncate(after.label, 60)))
+        val amountLine = diffText("${format(before.amount)}원", "${format(after.amount)}원")
+        val vendorLine = diffNullableText(before.vendor, after.vendor) { escapeHtml(truncate(it, 60)) }
+        val payerLine = diffNullableText(before.payerLabel, after.payerLabel) { escapeHtml(it) }
+        val debitDayLine = diffNullableText(before.debitDay?.let { "${it}일" }, after.debitDay?.let { "${it}일" }) { it }
+        val memoLine = diffNullableText(before.memo, after.memo) { escapeHtml(truncate(it, 150)) }
+
+        val hasChange = sectionLine.changed || labelLine.changed || amountLine.changed ||
+            vendorLine?.changed == true || payerLine?.changed == true || debitDayLine?.changed == true || memoLine?.changed == true
+        if (!hasChange) return
+
+        val sb = StringBuilder()
+        sb.append("✏️ <b>가계 현황 수정 [${sectionLine.text}]</b>\n")
+        sb.append("${labelLine.text}: ${amountLine.text}\n")
+        vendorLine?.let { sb.append("업체명: ${it.text}\n") }
+        payerLine?.let { sb.append("대상자: ${it.text}\n") }
+        debitDayLine?.let { sb.append("이체일: ${it.text}\n") }
+        memoLine?.let { sb.append("비고: ${it.text}\n") }
+        send(sb.toString().trimEnd(), chatId = expenseChatId.ifBlank { defaultChatId })
+    }
+
+    // 소프트 삭제 — 삭제 직전 값을 그대로 알림(일정 관리와 달리 이 도메인은 삭제도 알림 대상)
+    fun notifyHouseholdItemDeleted(summary: HouseholdItemSummary) {
+        val sb = StringBuilder()
+        sb.append("🗑️ <b>가계 현황 삭제 [${escapeHtml(summary.sectionLabel)}]</b>\n")
+        sb.append("${escapeHtml(truncate(summary.label, 60))} ${format(summary.amount)}원\n")
+        summary.vendor?.let { sb.append("업체명: ${escapeHtml(truncate(it, 60))}\n") }
+        summary.payerLabel?.let { sb.append("대상자: ${escapeHtml(it)}\n") }
+        summary.debitDay?.let { sb.append("이체일: ${it}일\n") }
+        summary.memo?.let { sb.append("비고: ${escapeHtml(truncate(it, 150))}\n") }
+        send(sb.toString().trimEnd(), chatId = expenseChatId.ifBlank { defaultChatId })
+    }
+
     private data class DiffResult(val text: String, val changed: Boolean)
 
     private fun diffText(before: String, after: String): DiffResult =
         if (before == after) DiffResult(before, false) else DiffResult("$before → $after", true)
+
+    // 선택 필드(업체명/대상자/이체일/비고)용 — 일정 수정 알림의 메모 처리와 동일한 규칙: 둘 다 null일
+    // 때만 그 줄 자체를 안 만듦(null 반환), 하나라도 값이 있으면 안 바뀌었어도 항상 보여주고(값만 표시)
+    // 바뀐 경우만 "이전 → 이후"로 표기(변환 함수는 escapeHtml/truncate 등 후처리용)
+    private fun diffNullableText(before: String?, after: String?, transform: (String) -> String = { it }): DiffResult? {
+        if (before == null && after == null) return null
+        return diffText(transform(before ?: "-"), transform(after ?: "-"))
+    }
 
     private fun appendCategorySpend(sb: StringBuilder, label: String, spend: CategorySpend) {
         sb.append("- $label ${format(spend.total)}원\n")

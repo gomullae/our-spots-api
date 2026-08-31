@@ -35,6 +35,9 @@ app:
     chat-id: ${TELEGRAM_CHAT_ID:}
     expense-chat-id: ${TELEGRAM_EXPENSE_CHAT_ID:}
     schedule-chat-id: ${TELEGRAM_SCHEDULE_CHAT_ID:}
+  # 생활비 내역(household_budget_items 등) 금액 컬럼 암호화 키(AES-256, base64) — openssl rand -base64 32로 생성
+  household:
+    encryption-key: ${HOUSEHOLD_ENCRYPTION_KEY:}
   # 사진 업로드(Cloudflare R2, S3 호환) — 장소/일정 사진 첨부용
   r2:
     account-id: ${R2_ACCOUNT_ID:}
