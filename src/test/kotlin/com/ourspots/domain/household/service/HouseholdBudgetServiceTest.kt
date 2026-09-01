@@ -45,6 +45,10 @@ class HouseholdBudgetServiceTest {
     @BeforeEach
     fun setUp() {
         MockKAnnotations.init(this)
+        // historyRepository는 relaxed=true라도 JpaRepository.save()처럼 자기 자신(S : T)을 반환하는 제네릭
+        // 메서드는 relaxed mock이 반환값을 올바른 타입으로 못 만들어서 MockK가 생성한 브릿지 메서드 내부에서
+        // ClassCastException이 남 — 반환값을 실제로 안 쓰는 호출(fire-and-forget)이어도 마찬가지라 명시적으로 스텁 필요
+        every { historyRepository.save(any()) } returns mockk(relaxed = true)
     }
 
     @Nested
@@ -202,6 +206,20 @@ class HouseholdBudgetServiceTest {
                 service.updateItem(999L, HouseholdBudgetItemRequest(sectionType = HouseholdSectionType.FIXED_COST, label = "x", amount = 1L))
             }
         }
+
+        // 구독료는 "나중에 추가할게"라는 요청으로 일단 알림 대상에서 제외됨(2026-09-01)
+        @Test
+        fun updateItem_whenSubscription_shouldNotNotify() {
+            val existing = createItemEntity(id = 1L, label = "유튜브 구독", amount = 0L).apply {
+                sectionType = HouseholdSectionType.SUBSCRIPTION
+            }
+            every { itemRepository.findById(1L) } returns Optional.of(existing)
+            every { itemRepository.save(any()) } answers { firstArg() }
+
+            service.updateItem(1L, HouseholdBudgetItemRequest(sectionType = HouseholdSectionType.SUBSCRIPTION, label = "유튜브 구독", amount = 0L))
+
+            verify(exactly = 0) { telegramNotificationService.notifyHouseholdItemUpdated(any(), any()) }
+        }
     }
 
     @Nested
@@ -231,6 +249,20 @@ class HouseholdBudgetServiceTest {
                     )
                 )
             }
+        }
+
+        // 구독료는 "나중에 추가할게"라는 요청으로 일단 알림 대상에서 제외됨(2026-09-01)
+        @Test
+        fun deleteItem_whenSubscription_shouldNotNotify() {
+            val existing = createItemEntity(id = 1L, label = "유튜브 구독", amount = 0L).apply {
+                sectionType = HouseholdSectionType.SUBSCRIPTION
+            }
+            every { itemRepository.findById(1L) } returns Optional.of(existing)
+            every { itemRepository.delete(existing) } just runs
+
+            service.deleteItem(1L)
+
+            verify(exactly = 0) { telegramNotificationService.notifyHouseholdItemDeleted(any()) }
         }
     }
 

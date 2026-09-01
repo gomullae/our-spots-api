@@ -22,6 +22,7 @@ import com.ourspots.domain.household.repository.HouseholdBudgetItemRepository
 import com.ourspots.domain.household.repository.HouseholdHistoryRepository
 import com.ourspots.domain.household.repository.HouseholdIncomeRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 
 @Service
@@ -50,7 +51,11 @@ class HouseholdBudgetService(
 
     // ===== 수입 =====
 
-    @Transactional
+    // NOT_SUPPORTED: 텔레그램 발송(최대 수 초 소요되는 외부 HTTP 호출)이 DB 트랜잭션 안에 들어있으면 그 시간
+    // 내내 커넥션 풀(운영 5개, 앱 전체 공유)의 커넥션 하나를 붙잡고 있게 됨 — save()는 Spring Data JPA
+    // 리포지토리 자체가 짧은 자체 트랜잭션으로 처리하므로, 이 메서드 레벨에서 트랜잭션을 열지 않아도 저장은
+    // 그대로 원자적으로 처리됨(ScheduleService.createEvent/updateEvent와 동일한 이유)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun createIncome(request: HouseholdIncomeRequest): HouseholdIncomeResponse {
         val entity = HouseholdIncome(label = request.label, amount = request.amount, memo = request.memo)
         val saved = incomeRepository.save(entity)
@@ -59,7 +64,7 @@ class HouseholdBudgetService(
         return HouseholdIncomeResponse.from(saved)
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun updateIncome(id: Long, request: HouseholdIncomeRequest): HouseholdIncomeResponse {
         val entity = incomeRepository.findByIdOrThrow(id, "Household income")
         val before = incomeSummary(entity)
@@ -74,7 +79,7 @@ class HouseholdBudgetService(
         return HouseholdIncomeResponse.from(saved)
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun deleteIncome(id: Long) {
         val entity = incomeRepository.findByIdOrThrow(id, "Household income")
         val summary = incomeSummary(entity)
@@ -95,7 +100,7 @@ class HouseholdBudgetService(
 
     // ===== 예산 항목(고정비/자산/지출예정액/구독료) =====
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun createItem(request: HouseholdBudgetItemRequest): HouseholdBudgetItemResponse {
         val entity = HouseholdBudgetItem(
             sectionType = request.sectionType,
@@ -112,14 +117,11 @@ class HouseholdBudgetService(
         )
         val saved = itemRepository.save(entity)
         historyRepository.save(HouseholdHistory.fromBudgetItem(saved, HouseholdHistoryAction.CREATE))
-        // TODO(household-notify-subscription): 구독료는 일단 알림 대상에서 제외(2026-09-01, "나중에 추가할게")
-        if (saved.sectionType != HouseholdSectionType.SUBSCRIPTION) {
-            telegramNotificationService.notifyHouseholdItemCreated(itemSummary(saved))
-        }
+        notifyUnlessSubscription(saved.sectionType) { telegramNotificationService.notifyHouseholdItemCreated(itemSummary(saved)) }
         return HouseholdBudgetItemResponse.from(saved)
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun updateItem(id: Long, request: HouseholdBudgetItemRequest): HouseholdBudgetItemResponse {
         val entity = itemRepository.findByIdOrThrow(id, "Household budget item")
         val before = itemSummary(entity)
@@ -138,23 +140,17 @@ class HouseholdBudgetService(
 
         val saved = itemRepository.save(entity)
         historyRepository.save(HouseholdHistory.fromBudgetItem(saved, HouseholdHistoryAction.UPDATE))
-        // TODO(household-notify-subscription): 구독료는 일단 알림 대상에서 제외(2026-09-01, "나중에 추가할게")
-        if (saved.sectionType != HouseholdSectionType.SUBSCRIPTION) {
-            telegramNotificationService.notifyHouseholdItemUpdated(before, itemSummary(saved))
-        }
+        notifyUnlessSubscription(saved.sectionType) { telegramNotificationService.notifyHouseholdItemUpdated(before, itemSummary(saved)) }
         return HouseholdBudgetItemResponse.from(saved)
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun deleteItem(id: Long) {
         val entity = itemRepository.findByIdOrThrow(id, "Household budget item")
         val summary = itemSummary(entity)
         itemRepository.delete(entity)
         historyRepository.save(HouseholdHistory.fromBudgetItem(entity, HouseholdHistoryAction.DELETE))
-        // TODO(household-notify-subscription): 구독료는 일단 알림 대상에서 제외(2026-09-01, "나중에 추가할게")
-        if (entity.sectionType != HouseholdSectionType.SUBSCRIPTION) {
-            telegramNotificationService.notifyHouseholdItemDeleted(summary)
-        }
+        notifyUnlessSubscription(entity.sectionType) { telegramNotificationService.notifyHouseholdItemDeleted(summary) }
     }
 
     @Transactional
@@ -172,6 +168,12 @@ class HouseholdBudgetService(
         HouseholdSectionType.ASSET -> "자산"
         HouseholdSectionType.PLANNED_EXPENSE -> "지출예정액"
         HouseholdSectionType.SUBSCRIPTION -> "구독료"
+    }
+
+    // TODO(household-notify-subscription): 구독료는 일단 알림 대상에서 제외(2026-09-01, "나중에 추가할게")
+    // — 재개할 땐 이 가드(호출부 3곳이 아니라 이 한 곳만) 지우면 됨
+    private fun notifyUnlessSubscription(sectionType: HouseholdSectionType, notify: () -> Unit) {
+        if (sectionType != HouseholdSectionType.SUBSCRIPTION) notify()
     }
 
     private fun payerLabel(payer: HouseholdPayer): String = when (payer) {

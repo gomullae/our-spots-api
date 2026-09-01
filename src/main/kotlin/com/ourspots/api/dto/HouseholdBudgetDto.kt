@@ -11,12 +11,13 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
 
 data class HouseholdIncomeRequest(
-    @field:NotBlank val label: String,
+    @field:NotBlank @field:Size(max = 100) val label: String,
     @field:NotNull val amount: Long,
-    val memo: String? = null
+    @field:Size(max = 300) val memo: String? = null
 )
 
 data class HouseholdIncomeResponse(
@@ -44,15 +45,15 @@ data class HouseholdIncomeResponse(
 data class HouseholdBudgetItemRequest(
     @field:NotNull val sectionType: HouseholdSectionType,
     val assetKind: HouseholdAssetKind? = null,
-    @field:NotBlank val label: String,
-    val vendor: String? = null,
+    @field:NotBlank @field:Size(max = 100) val label: String,
+    @field:Size(max = 100) val vendor: String? = null,
     @field:NotNull val amount: Long,
     val payer: HouseholdPayer? = null,
-    val autoDebitBank: String? = null,
+    @field:Size(max = 50) val autoDebitBank: String? = null,
     @field:Min(1) @field:Max(31) val debitDay: Int? = null,
-    val account: String? = null,
-    val plannedMonth: String? = null,
-    val memo: String? = null
+    @field:Size(max = 50) val account: String? = null,
+    @field:Size(max = 7) val plannedMonth: String? = null,
+    @field:Size(max = 300) val memo: String? = null
 )
 
 data class HouseholdBudgetItemResponse(
