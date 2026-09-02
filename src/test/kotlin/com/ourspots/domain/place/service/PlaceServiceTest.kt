@@ -720,6 +720,8 @@ class PlaceServiceTest {
             every {
                 photoService.findAdminPlacePhotos(null, PageRequest.of(0, 100))
             } returns PageImpl(emptyList(), PageRequest.of(0, 100), 0)
+            // 사진이 0건이라 placeIds도 빈 리스트 — getPhotoHistory가 항상 findAllById를 호출하므로 스텁 필요
+            every { placeRepository.findAllById(emptyList()) } returns emptyList()
 
             // when
             placeService.getPhotoHistory(null, 0, 100000)

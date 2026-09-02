@@ -14,6 +14,18 @@ import com.ourspots.domain.expense.entity.PaymentMethod
 import com.ourspots.domain.expense.repository.ExpenseRecordRepository
 import com.ourspots.domain.feedback.entity.Feedback
 import com.ourspots.domain.feedback.repository.FeedbackRepository
+import com.ourspots.domain.household.entity.HouseholdAccount
+import com.ourspots.domain.household.entity.HouseholdAutoDebitSource
+import com.ourspots.domain.household.entity.HouseholdBudgetItem
+import com.ourspots.domain.household.entity.HouseholdHistory
+import com.ourspots.domain.household.entity.HouseholdHistoryAction
+import com.ourspots.domain.household.entity.HouseholdHistoryItemType
+import com.ourspots.domain.household.entity.HouseholdIncome
+import com.ourspots.domain.household.entity.HouseholdPayer
+import com.ourspots.domain.household.entity.HouseholdSectionType
+import com.ourspots.domain.household.repository.HouseholdBudgetItemRepository
+import com.ourspots.domain.household.repository.HouseholdHistoryRepository
+import com.ourspots.domain.household.repository.HouseholdIncomeRepository
 import com.ourspots.domain.place.entity.Place
 import com.ourspots.domain.place.entity.PlaceType
 import com.ourspots.domain.place.repository.PlaceRepository
@@ -63,6 +75,15 @@ class BackupExportServiceTest {
 
     @MockK
     private lateinit var scheduleEventRepository: ScheduleEventRepository
+
+    @MockK
+    private lateinit var householdIncomeRepository: HouseholdIncomeRepository
+
+    @MockK
+    private lateinit var householdBudgetItemRepository: HouseholdBudgetItemRepository
+
+    @MockK
+    private lateinit var householdHistoryRepository: HouseholdHistoryRepository
 
     @InjectMockKs
     private lateinit var backupExportService: BackupExportService
@@ -198,6 +219,55 @@ class BackupExportServiceTest {
 
             assertEquals(listOf("id", "title", "category", "startAt", "endAt", "allDay", "memo", "createdAt", "updatedAt", "deletedAt"), result.headers)
             assertEquals(listOf(1L, "커피약속", "JINWOO", startAt.toString(), startAt.toString(), false, "1시간"), result.rows[0].take(7))
+        }
+
+        @Test
+        fun fetchTableData_whenHouseholdIncomes_shouldMapAllFields() {
+            val income = HouseholdIncome(id = 1, label = "급여", amount = 5_700_000L, memo = "본급")
+            every { householdIncomeRepository.findAllForDashboard(true) } returns listOf(income)
+
+            val result = backupExportService.fetchTableData(BackupTable.HOUSEHOLD_INCOMES, BackupPeriod.ALL)
+
+            assertEquals(listOf("id", "label", "amount", "memo", "createdAt", "updatedAt", "deletedAt"), result.headers)
+            assertEquals(listOf(1L, "급여", 5_700_000L, "본급"), result.rows[0].take(4))
+        }
+
+        @Test
+        fun fetchTableData_whenHouseholdBudgetItems_shouldMapAllFieldsIncludingEnums() {
+            val item = HouseholdBudgetItem(
+                id = 1, sectionType = HouseholdSectionType.FIXED_COST, label = "통신비", vendor = "SKT", amount = 33_250L,
+                payer = HouseholdPayer.CHOYOUNG, autoDebitBank = HouseholdAutoDebitSource.SHINHAN_BANK, debitDay = 10,
+                account = HouseholdAccount.UTILITY_ACCOUNT
+            )
+            every { householdBudgetItemRepository.findAllForDashboard(true) } returns listOf(item)
+
+            val result = backupExportService.fetchTableData(BackupTable.HOUSEHOLD_BUDGET_ITEMS, BackupPeriod.ALL)
+
+            assertEquals(
+                listOf("id", "sectionType", "assetKind", "label", "vendor", "amount", "payer", "autoDebitBank", "debitDay", "account", "plannedMonth", "memo", "createdAt", "updatedAt", "deletedAt"),
+                result.headers
+            )
+            assertEquals(
+                listOf(1L, "FIXED_COST", null, "통신비", "SKT", 33_250L, "CHOYOUNG", "SHINHAN_BANK", 10, "UTILITY_ACCOUNT"),
+                result.rows[0].take(10)
+            )
+        }
+
+        @Test
+        fun fetchTableData_whenHouseholdHistory_shouldMapAllFields() {
+            val history = HouseholdHistory(
+                id = 1, itemType = HouseholdHistoryItemType.BUDGET_ITEM, itemId = 5, action = HouseholdHistoryAction.CREATE,
+                sectionType = HouseholdSectionType.FIXED_COST, label = "통신비", amount = 33_250L
+            )
+            every { householdHistoryRepository.findAll() } returns listOf(history)
+
+            val result = backupExportService.fetchTableData(BackupTable.HOUSEHOLD_HISTORY, BackupPeriod.ALL)
+
+            assertEquals(
+                listOf("id", "itemType", "itemId", "action", "sectionType", "assetKind", "label", "vendor", "amount", "payer", "autoDebitBank", "debitDay", "account", "plannedMonth", "memo", "createdAt"),
+                result.headers
+            )
+            assertEquals(listOf(1L, "BUDGET_ITEM", 5L, "CREATE", "FIXED_COST", null, "통신비", null, 33_250L), result.rows[0].take(9))
         }
     }
 

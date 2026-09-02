@@ -7,6 +7,9 @@ import com.ourspots.domain.backup.BackupPeriod
 import com.ourspots.domain.backup.BackupTable
 import com.ourspots.domain.expense.repository.ExpenseRecordRepository
 import com.ourspots.domain.feedback.repository.FeedbackRepository
+import com.ourspots.domain.household.repository.HouseholdBudgetItemRepository
+import com.ourspots.domain.household.repository.HouseholdHistoryRepository
+import com.ourspots.domain.household.repository.HouseholdIncomeRepository
 import com.ourspots.domain.place.repository.PlaceRepository
 import com.ourspots.domain.schedule.repository.ScheduleEventRepository
 import com.ourspots.domain.weight.repository.WeightRecordRepository
@@ -31,7 +34,10 @@ class BackupExportService(
     private val feedbackRepository: FeedbackRepository,
     private val errorLogRepository: ErrorLogRepository,
     private val accessDeniedLogRepository: AccessDeniedLogRepository,
-    private val scheduleEventRepository: ScheduleEventRepository
+    private val scheduleEventRepository: ScheduleEventRepository,
+    private val householdIncomeRepository: HouseholdIncomeRepository,
+    private val householdBudgetItemRepository: HouseholdBudgetItemRepository,
+    private val householdHistoryRepository: HouseholdHistoryRepository
 ) {
     companion object {
         private val DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd")
@@ -130,6 +136,50 @@ class BackupExportService(
                         listOf(
                             it.id, it.title, it.category.name, it.startAt.toString(), it.endAt.toString(),
                             it.allDay, it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
+                        )
+                    }
+            )
+
+            // amount는 DB엔 암호화 저장되지만 엔티티 로드 시점에 EncryptedLongConverter가 자동 복호화하므로
+            // 여기선 이미 평문 Long — 관리자 화면/텔레그램 알림도 동일하게 평문으로 다루는 것과 같은 원칙
+            BackupTable.HOUSEHOLD_INCOMES -> TableData(
+                listOf("id", "label", "amount", "memo", "createdAt", "updatedAt", "deletedAt"),
+                since(period, { householdIncomeRepository.findAllForDashboard(true) }) { householdIncomeRepository.findAllIncludingDeletedSince(cutoff) }
+                    .sortedByDescending { it.createdAt }
+                    .map {
+                        listOf(it.id, it.label, it.amount, it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString())
+                    }
+            )
+
+            BackupTable.HOUSEHOLD_BUDGET_ITEMS -> TableData(
+                listOf(
+                    "id", "sectionType", "assetKind", "label", "vendor", "amount", "payer",
+                    "autoDebitBank", "debitDay", "account", "plannedMonth", "memo", "createdAt", "updatedAt", "deletedAt"
+                ),
+                since(period, { householdBudgetItemRepository.findAllForDashboard(true) }) { householdBudgetItemRepository.findAllIncludingDeletedSince(cutoff) }
+                    .sortedByDescending { it.createdAt }
+                    .map {
+                        listOf(
+                            it.id, it.sectionType.name, it.assetKind?.name, it.label, it.vendor, it.amount, it.payer?.name,
+                            it.autoDebitBank?.name, it.debitDay, it.account?.name, it.plannedMonth, it.memo,
+                            it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
+                        )
+                    }
+            )
+
+            // append-only 로그라 소프트 삭제(deletedAt) 개념 자체가 없음
+            BackupTable.HOUSEHOLD_HISTORY -> TableData(
+                listOf(
+                    "id", "itemType", "itemId", "action", "sectionType", "assetKind", "label", "vendor", "amount",
+                    "payer", "autoDebitBank", "debitDay", "account", "plannedMonth", "memo", "createdAt"
+                ),
+                since(period, { householdHistoryRepository.findAll() }) { householdHistoryRepository.findAllSince(cutoff) }
+                    .sortedByDescending { it.createdAt }
+                    .map {
+                        listOf(
+                            it.id, it.itemType.name, it.itemId, it.action.name, it.sectionType?.name, it.assetKind?.name,
+                            it.label, it.vendor, it.amount, it.payer?.name, it.autoDebitBank?.name, it.debitDay,
+                            it.account?.name, it.plannedMonth, it.memo, it.createdAt.toString()
                         )
                     }
             )

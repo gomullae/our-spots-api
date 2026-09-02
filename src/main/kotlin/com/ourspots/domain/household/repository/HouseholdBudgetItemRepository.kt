@@ -18,6 +18,10 @@ interface HouseholdBudgetItemRepository : JpaRepository<HouseholdBudgetItem, Lon
     )
     fun findAllForDashboard(includeDeleted: Boolean): List<HouseholdBudgetItem>
 
+    // 백업 "최근 3개월" 조회용 — PlaceRepository.findAllIncludingDeletedSince()와 동일 패턴
+    @Query("SELECT * FROM household_budget_items WHERE created_at >= :cutoff ORDER BY id", nativeQuery = true)
+    fun findAllIncludingDeletedSince(cutoff: LocalDateTime): List<HouseholdBudgetItem>
+
     // 프론트 캐시 검증(/api/household-budget/meta)용 — JPQL이라 @SQLRestriction(deleted_at IS NULL)이 자동 적용됨
     @Query("SELECT MAX(i.updatedAt) FROM HouseholdBudgetItem i")
     fun findMaxUpdatedAt(): LocalDateTime?

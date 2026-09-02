@@ -46,5 +46,6 @@ class PhotoController(
         @PathVariable id: Long,
         @Valid @RequestBody request: PhotoVisibilityUpdateRequest
     ): ApiResponse<PhotoResponse> =
-        ApiResponse.success(photoService.updateVisibility(id, request.isPublic))
+        // @field:NotNull 검증을 이미 통과했으므로 이 시점엔 항상 non-null
+        ApiResponse.success(photoService.updateVisibility(id, request.isPublic!!))
 }

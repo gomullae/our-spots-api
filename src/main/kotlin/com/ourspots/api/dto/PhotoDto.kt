@@ -47,8 +47,11 @@ data class PhotoResponse(
     }
 }
 
+// isPublic이 원시 Boolean(비-null)이면 JSON에 키 자체가 없을 때 Jackson이 예외 대신 조용히 false로
+// 채워버려서(원시 타입이라 "없음"을 표현 못 함) @field:NotNull이 무력화됨 — Boolean?로 열어두고
+// Bean Validation이 null을 직접 잡게 함(컨트롤러에서 검증 통과 후 request.isPublic!!로 사용)
 data class PhotoVisibilityUpdateRequest(
-    @field:NotNull val isPublic: Boolean
+    @field:NotNull val isPublic: Boolean?
 )
 
 // 관리자 "등록 사진 이력" 화면 전용 — Photo는 Place와 FK 없이 연결돼있어서 장소명을 PlaceService가
