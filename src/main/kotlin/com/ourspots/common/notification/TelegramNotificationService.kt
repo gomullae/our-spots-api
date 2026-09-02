@@ -178,11 +178,7 @@ class TelegramNotificationService(
     fun notifyHouseholdItemCreated(summary: HouseholdItemSummary) {
         val sb = StringBuilder()
         sb.append("🆕 <b>가계 현황 추가 [${escapeHtml(summary.sectionLabel)}]</b>\n")
-        sb.append("${escapeHtml(truncate(summary.label, 60))} ${format(summary.amount)}원\n")
-        summary.vendor?.let { sb.append("업체명: ${escapeHtml(truncate(it, 60))}\n") }
-        summary.payerLabel?.let { sb.append("대상자: ${escapeHtml(it)}\n") }
-        summary.debitDay?.let { sb.append("이체일: ${it}일\n") }
-        summary.memo?.let { sb.append("비고: ${escapeHtml(truncate(it, 150))}\n") }
+        appendHouseholdItemSummary(sb, summary)
         send(sb.toString().trimEnd(), chatId = expenseChatId.ifBlank { defaultChatId })
     }
 
@@ -217,12 +213,17 @@ class TelegramNotificationService(
     fun notifyHouseholdItemDeleted(summary: HouseholdItemSummary) {
         val sb = StringBuilder()
         sb.append("🗑️ <b>가계 현황 삭제 [${escapeHtml(summary.sectionLabel)}]</b>\n")
+        appendHouseholdItemSummary(sb, summary)
+        send(sb.toString().trimEnd(), chatId = expenseChatId.ifBlank { defaultChatId })
+    }
+
+    // 추가/삭제 알림이 공유하는 본문 줄(항목명+금액/업체명/대상자/이체일/비고) — 헤더 줄(이모지+구분)만 다름
+    private fun appendHouseholdItemSummary(sb: StringBuilder, summary: HouseholdItemSummary) {
         sb.append("${escapeHtml(truncate(summary.label, 60))} ${format(summary.amount)}원\n")
         summary.vendor?.let { sb.append("업체명: ${escapeHtml(truncate(it, 60))}\n") }
         summary.payerLabel?.let { sb.append("대상자: ${escapeHtml(it)}\n") }
         summary.debitDay?.let { sb.append("이체일: ${it}일\n") }
         summary.memo?.let { sb.append("비고: ${escapeHtml(truncate(it, 150))}\n") }
-        send(sb.toString().trimEnd(), chatId = expenseChatId.ifBlank { defaultChatId })
     }
 
     private data class DiffResult(val text: String, val changed: Boolean)
