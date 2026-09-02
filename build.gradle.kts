@@ -25,6 +25,11 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-cache")
+	// APM/메트릭(Grafana Cloud, 2026-09-02~) — Actuator가 요청/JVM/DB커넥션풀 등을 수집하고,
+	// Micrometer의 OTLP registry가 그 값을 Grafana Cloud로 직접 push(pull 방식 아님 — 별도 수집
+	// 에이전트나 공개 엔드포인트 노출 없이 이 앱 프로세스 안에서 바로 내보냄)
+	implementation("org.springframework.boot:spring-boot-starter-actuator")
+	implementation("io.micrometer:micrometer-registry-otlp")
 	implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")

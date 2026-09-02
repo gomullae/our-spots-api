@@ -21,6 +21,22 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # health만 공개 — metrics 등 세부 엔드포인트는 내부 정보(DB 풀 상태 등) 노출 위험이 있어 제외
+        include: health
+  otlp:
+    metrics:
+      export:
+        url: ${GRAFANA_OTLP_ENDPOINT:}
+        headers:
+          Authorization: ${GRAFANA_OTLP_AUTH:}
+        # 로컬/테스트 등 미설정 환경에서는 빈 URL로 계속 push를 시도하며 에러 로그가 쌓이지 않도록 기본 false —
+        # 운영 .env에서만 true로 설정
+        enabled: ${GRAFANA_METRICS_ENABLED:false}
+
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
