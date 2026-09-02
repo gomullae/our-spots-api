@@ -58,13 +58,16 @@ class HouseholdHistory(
     @Column(length = 20)
     val payer: HouseholdPayer? = null,
 
+    // length=50 — HouseholdBudgetItem.autoDebitBank/account와 동일한 이유(기존 VARCHAR(50) 컬럼 그대로 사용)
+    @Enumerated(EnumType.STRING)
     @Column(length = 50)
-    val autoDebitBank: String? = null,
+    val autoDebitBank: HouseholdAutoDebitSource? = null,
 
     val debitDay: Int? = null,
 
+    @Enumerated(EnumType.STRING)
     @Column(length = 50)
-    val account: String? = null,
+    val account: HouseholdAccount? = null,
 
     @Column(length = 7)
     val plannedMonth: String? = null,

@@ -1,12 +1,15 @@
 package com.ourspots.api.dto
 
+import com.ourspots.domain.household.entity.HouseholdAccount
 import com.ourspots.domain.household.entity.HouseholdAssetKind
+import com.ourspots.domain.household.entity.HouseholdAutoDebitSource
 import com.ourspots.domain.household.entity.HouseholdBudgetItem
 import com.ourspots.domain.household.entity.HouseholdHistory
 import com.ourspots.domain.household.entity.HouseholdHistoryAction
 import com.ourspots.domain.household.entity.HouseholdIncome
 import com.ourspots.domain.household.entity.HouseholdPayer
 import com.ourspots.domain.household.entity.HouseholdSectionType
+import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Max
@@ -49,12 +52,17 @@ data class HouseholdBudgetItemRequest(
     @field:Size(max = 100) val vendor: String? = null,
     @field:NotNull val amount: Long,
     val payer: HouseholdPayer? = null,
-    @field:Size(max = 50) val autoDebitBank: String? = null,
+    val autoDebitBank: HouseholdAutoDebitSource? = null,
     @field:Min(1) @field:Max(31) val debitDay: Int? = null,
-    @field:Size(max = 50) val account: String? = null,
+    val account: HouseholdAccount? = null,
     @field:Size(max = 7) val plannedMonth: String? = null,
     @field:Size(max = 300) val memo: String? = null
-)
+) {
+    // sectionType=ASSET인데 assetKind가 비어있으면 "자산 현황" 표(자산/부채 어느 그룹에도 안 걸림)와
+    // 순자산 합계에서 그 항목이 조용히 빠져버림 — 저장 시점에 막아서 그 사고를 원천 차단
+    @AssertTrue(message = "자산 항목은 자산/부채 구분이 필요합니다.")
+    fun isAssetKindValid(): Boolean = sectionType != HouseholdSectionType.ASSET || assetKind != null
+}
 
 data class HouseholdBudgetItemResponse(
     val id: Long,
@@ -64,9 +72,9 @@ data class HouseholdBudgetItemResponse(
     val vendor: String?,
     val amount: Long,
     val payer: HouseholdPayer?,
-    val autoDebitBank: String?,
+    val autoDebitBank: HouseholdAutoDebitSource?,
     val debitDay: Int?,
-    val account: String?,
+    val account: HouseholdAccount?,
     val plannedMonth: String?,
     val memo: String?,
     val createdAt: LocalDateTime,
@@ -116,9 +124,9 @@ data class HouseholdHistoryResponse(
     val vendor: String?,
     val amount: Long,
     val payer: HouseholdPayer?,
-    val autoDebitBank: String?,
+    val autoDebitBank: HouseholdAutoDebitSource?,
     val debitDay: Int?,
-    val account: String?,
+    val account: HouseholdAccount?,
     val plannedMonth: String?,
     val memo: String?,
     val createdAt: LocalDateTime

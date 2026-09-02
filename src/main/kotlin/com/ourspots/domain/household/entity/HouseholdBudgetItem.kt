@@ -53,14 +53,18 @@ class HouseholdBudgetItem(
     @Column(length = 20)
     var payer: HouseholdPayer? = null,
 
+    // length=50 — DB 컬럼(VARCHAR(50))은 원래 자유 텍스트였을 때 그대로 둠(enum 상수명이 다 20자
+    // 이내라 여유 있음, 컬럼을 굳이 줄이는 마이그레이션 불필요)
+    @Enumerated(EnumType.STRING)
     @Column(length = 50)
-    var autoDebitBank: String? = null,
+    var autoDebitBank: HouseholdAutoDebitSource? = null,
 
     var debitDay: Int? = null,
 
-    // 연결계좌 그룹핑 라벨(공과금통장/진우통장/생활비통장 등) — sectionType=FIXED_COST용
+    // 연결계좌 그룹핑(공과금통장/진우통장/생활비통장 등) — sectionType=FIXED_COST용
+    @Enumerated(EnumType.STRING)
     @Column(length = 50)
-    var account: String? = null,
+    var account: HouseholdAccount? = null,
 
     // "2027-04" 형식 — sectionType=PLANNED_EXPENSE일 때만 사용
     @Column(length = 7)

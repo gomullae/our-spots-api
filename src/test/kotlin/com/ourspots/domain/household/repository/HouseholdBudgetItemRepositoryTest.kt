@@ -1,5 +1,7 @@
 package com.ourspots.domain.household.repository
 
+import com.ourspots.domain.household.entity.HouseholdAccount
+import com.ourspots.domain.household.entity.HouseholdAutoDebitSource
 import com.ourspots.domain.household.entity.HouseholdBudgetItem
 import com.ourspots.domain.household.entity.HouseholdPayer
 import com.ourspots.domain.household.entity.HouseholdSectionType
@@ -177,8 +179,8 @@ class HouseholdBudgetItemRepositoryTest {
         vendor = "SKT",
         amount = amount,
         payer = HouseholdPayer.CHOYOUNG,
-        autoDebitBank = "신한은행",
+        autoDebitBank = HouseholdAutoDebitSource.SHINHAN_BANK,
         debitDay = 10,
-        account = "공과금통장"
+        account = HouseholdAccount.UTILITY_ACCOUNT
     )
 }
