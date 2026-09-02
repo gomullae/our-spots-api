@@ -1,5 +1,6 @@
 package com.ourspots.domain.backup.service
 
+import com.ourspots.common.crypto.EncryptedLongConverter
 import com.ourspots.common.errorlog.ErrorLogRepository
 import com.ourspots.domain.auth.repository.AccessDeniedLogRepository
 import com.ourspots.domain.auth.repository.LoginAttemptRepository
@@ -37,7 +38,8 @@ class BackupExportService(
     private val scheduleEventRepository: ScheduleEventRepository,
     private val householdIncomeRepository: HouseholdIncomeRepository,
     private val householdBudgetItemRepository: HouseholdBudgetItemRepository,
-    private val householdHistoryRepository: HouseholdHistoryRepository
+    private val householdHistoryRepository: HouseholdHistoryRepository,
+    private val encryptedLongConverter: EncryptedLongConverter
 ) {
     companion object {
         private val DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd")
@@ -140,14 +142,17 @@ class BackupExportService(
                     }
             )
 
-            // amount는 DB엔 암호화 저장되지만 엔티티 로드 시점에 EncryptedLongConverter가 자동 복호화하므로
-            // 여기선 이미 평문 Long — 관리자 화면/텔레그램 알림도 동일하게 평문으로 다루는 것과 같은 원칙
+            // amount는 엔티티 로드 시점에 EncryptedLongConverter가 자동 복호화해서 평문 Long으로 들어오지만,
+            // 백업 파일엔 그대로 내보내지 않고 이 컨버터로 다시 암호화한 값을 씀 — 복구 시 이 값을 그대로
+            // amount 컬럼에 넣으면 되고(재암호화라 원본과 바이트는 다르지만 같은 키로 똑같이 복호화됨,
+            // GCM은 매 암호화마다 IV가 달라져도 결과 평문은 동일), 백업 파일 자체엔 실제 금액이 평문으로
+            // 안 남아서 파일이 유출돼도(다운로드 폴더, 이메일 첨부 등) 숫자가 그대로 노출되지 않음
             BackupTable.HOUSEHOLD_INCOMES -> TableData(
                 listOf("id", "label", "amount", "memo", "createdAt", "updatedAt", "deletedAt"),
                 since(period, { householdIncomeRepository.findAllForDashboard(true) }) { householdIncomeRepository.findAllIncludingDeletedSince(cutoff) }
                     .sortedByDescending { it.createdAt }
                     .map {
-                        listOf(it.id, it.label, it.amount, it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString())
+                        listOf(it.id, it.label, encryptedLongConverter.convertToDatabaseColumn(it.amount), it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString())
                     }
             )
 
@@ -160,7 +165,8 @@ class BackupExportService(
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(
-                            it.id, it.sectionType.name, it.assetKind?.name, it.label, it.vendor, it.amount, it.payer?.name,
+                            it.id, it.sectionType.name, it.assetKind?.name, it.label, it.vendor,
+                            encryptedLongConverter.convertToDatabaseColumn(it.amount), it.payer?.name,
                             it.autoDebitBank?.name, it.debitDay, it.account?.name, it.plannedMonth, it.memo,
                             it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
                         )
@@ -178,8 +184,8 @@ class BackupExportService(
                     .map {
                         listOf(
                             it.id, it.itemType.name, it.itemId, it.action.name, it.sectionType?.name, it.assetKind?.name,
-                            it.label, it.vendor, it.amount, it.payer?.name, it.autoDebitBank?.name, it.debitDay,
-                            it.account?.name, it.plannedMonth, it.memo, it.createdAt.toString()
+                            it.label, it.vendor, encryptedLongConverter.convertToDatabaseColumn(it.amount), it.payer?.name,
+                            it.autoDebitBank?.name, it.debitDay, it.account?.name, it.plannedMonth, it.memo, it.createdAt.toString()
                         )
                     }
             )

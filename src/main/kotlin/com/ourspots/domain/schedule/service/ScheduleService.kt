@@ -46,7 +46,8 @@ class ScheduleService(
             category = request.category,
             startAt = request.startAt,
             endAt = request.endAt,
-            allDay = request.allDay,
+            // @field:NotNull 검증을 이미 통과했으므로 이 시점엔 항상 non-null
+            allDay = request.allDay!!,
             memo = request.memo
         )
         val saved = scheduleEventRepository.save(event)
@@ -65,7 +66,7 @@ class ScheduleService(
         event.category = request.category
         event.startAt = request.startAt
         event.endAt = request.endAt
-        event.allDay = request.allDay
+        event.allDay = request.allDay!!
         event.memo = request.memo
 
         val saved = scheduleEventRepository.save(event)

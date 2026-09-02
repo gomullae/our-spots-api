@@ -67,6 +67,30 @@ class EncryptedLongConverterTest {
     }
 
     @Nested
+    @DisplayName("복호화 실패")
+    inner class DecryptFailure {
+
+        // 다른 키로 암호화된 값을 잘못된 키로 복호화 시도 — GCM 태그 불일치로 실패해야 함
+        @Test
+        fun convertToEntityAttribute_whenWrongKey_shouldThrowWithoutLeakingOriginalMessage() {
+            val otherKey = Base64.getEncoder().encodeToString(ByteArray(32) { (it + 1).toByte() })
+            val encryptedWithOtherKey = EncryptedLongConverter(otherKey).convertToDatabaseColumn(5_700_000L)!!
+
+            val exception = assertThrows<IllegalStateException> {
+                converter.convertToEntityAttribute(encryptedWithOtherKey)
+            }
+            // 원본 crypto 예외의 메시지/타입을 그대로 노출하지 않고 고정 메시지만 담아야 함(로그/error_logs 유출 방지)
+            assertEquals("가계 현황 금액 복호화에 실패했습니다.", exception.message)
+            assertNull(exception.cause)
+        }
+
+        @Test
+        fun convertToEntityAttribute_whenCorruptedBase64_shouldThrowSafeException() {
+            assertThrows<IllegalStateException> { converter.convertToEntityAttribute("이건-유효한-base64가-아님") }
+        }
+    }
+
+    @Nested
     @DisplayName("키 검증")
     inner class KeyValidation {
 

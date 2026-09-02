@@ -188,6 +188,19 @@ class ScheduleControllerIntegrationTest {
             )
                 .andExpect(status().isBadRequest)
         }
+
+        // Boolean(원시 타입)이면 JSON에 키가 없을 때 Jackson이 조용히 false로 채워서 @field:NotNull이
+        // 무력화되는 함정이 있었음(PhotoVisibilityUpdateRequest.isPublic과 동일 패턴) — 회귀 방지
+        @Test
+        fun createEvent_whenAllDayMissing_shouldReturn400() {
+            mockMvc.perform(
+                post("/api/schedules")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"title":"커피약속","category":"JINWOO","startAt":"2026-08-10T10:00:00","endAt":"2026-08-10T11:30:00"}""")
+            )
+                .andExpect(status().isBadRequest)
+        }
     }
 
     @Nested

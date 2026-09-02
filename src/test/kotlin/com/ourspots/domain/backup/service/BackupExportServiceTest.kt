@@ -1,5 +1,6 @@
 package com.ourspots.domain.backup.service
 
+import com.ourspots.common.crypto.EncryptedLongConverter
 import com.ourspots.common.errorlog.ErrorLog
 import com.ourspots.common.errorlog.ErrorLogRepository
 import com.ourspots.domain.auth.entity.AccessDeniedLog
@@ -38,6 +39,7 @@ import io.mockk.MockKAnnotations
 import io.mockk.every
 import io.mockk.impl.annotations.InjectMockKs
 import io.mockk.impl.annotations.MockK
+import io.mockk.impl.annotations.SpyK
 import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -47,7 +49,9 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.Base64
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class BackupExportServiceTest {
@@ -84,6 +88,11 @@ class BackupExportServiceTest {
 
     @MockK
     private lateinit var householdHistoryRepository: HouseholdHistoryRepository
+
+    // 실제 암복호화 라운드트립까지 검증하려고 mock이 아니라 진짜 컨버터를 씀(SpyK라야 @InjectMockKs가 주입해줌) —
+    // 테스트 전용 키(EncryptedLongConverterTest와 동일한 방식), 운영 키와 무관
+    @SpyK
+    private var encryptedLongConverter = EncryptedLongConverter(Base64.getEncoder().encodeToString(ByteArray(32) { it.toByte() }))
 
     @InjectMockKs
     private lateinit var backupExportService: BackupExportService
@@ -222,18 +231,24 @@ class BackupExportServiceTest {
         }
 
         @Test
-        fun fetchTableData_whenHouseholdIncomes_shouldMapAllFields() {
+        fun fetchTableData_whenHouseholdIncomes_shouldExportAmountReEncryptedNotPlaintext() {
             val income = HouseholdIncome(id = 1, label = "급여", amount = 5_700_000L, memo = "본급")
             every { householdIncomeRepository.findAllForDashboard(true) } returns listOf(income)
 
             val result = backupExportService.fetchTableData(BackupTable.HOUSEHOLD_INCOMES, BackupPeriod.ALL)
 
             assertEquals(listOf("id", "label", "amount", "memo", "createdAt", "updatedAt", "deletedAt"), result.headers)
-            assertEquals(listOf(1L, "급여", 5_700_000L, "본급"), result.rows[0].take(4))
+            val row = result.rows[0]
+            assertEquals(listOf(1L, "급여"), row.take(2))
+            val exportedAmount = row[2] as String
+            // 평문 숫자가 그대로 셀에 안 남고, 같은 키로 복호화하면 원래 값으로 돌아와야 함(복구 시 그대로 넣으면 됨)
+            assertNotEquals("5700000", exportedAmount)
+            assertEquals(5_700_000L, encryptedLongConverter.convertToEntityAttribute(exportedAmount))
+            assertEquals("본급", row[3])
         }
 
         @Test
-        fun fetchTableData_whenHouseholdBudgetItems_shouldMapAllFieldsIncludingEnums() {
+        fun fetchTableData_whenHouseholdBudgetItems_shouldMapAllFieldsIncludingEnumsAndReEncryptAmount() {
             val item = HouseholdBudgetItem(
                 id = 1, sectionType = HouseholdSectionType.FIXED_COST, label = "통신비", vendor = "SKT", amount = 33_250L,
                 payer = HouseholdPayer.CHOYOUNG, autoDebitBank = HouseholdAutoDebitSource.SHINHAN_BANK, debitDay = 10,
@@ -247,14 +262,14 @@ class BackupExportServiceTest {
                 listOf("id", "sectionType", "assetKind", "label", "vendor", "amount", "payer", "autoDebitBank", "debitDay", "account", "plannedMonth", "memo", "createdAt", "updatedAt", "deletedAt"),
                 result.headers
             )
-            assertEquals(
-                listOf(1L, "FIXED_COST", null, "통신비", "SKT", 33_250L, "CHOYOUNG", "SHINHAN_BANK", 10, "UTILITY_ACCOUNT"),
-                result.rows[0].take(10)
-            )
+            val row = result.rows[0]
+            assertEquals(listOf(1L, "FIXED_COST", null, "통신비", "SKT"), row.take(5))
+            assertEquals(33_250L, encryptedLongConverter.convertToEntityAttribute(row[5] as String))
+            assertEquals(listOf("CHOYOUNG", "SHINHAN_BANK", 10, "UTILITY_ACCOUNT"), row.subList(6, 10))
         }
 
         @Test
-        fun fetchTableData_whenHouseholdHistory_shouldMapAllFields() {
+        fun fetchTableData_whenHouseholdHistory_shouldMapAllFieldsAndReEncryptAmount() {
             val history = HouseholdHistory(
                 id = 1, itemType = HouseholdHistoryItemType.BUDGET_ITEM, itemId = 5, action = HouseholdHistoryAction.CREATE,
                 sectionType = HouseholdSectionType.FIXED_COST, label = "통신비", amount = 33_250L
@@ -267,7 +282,9 @@ class BackupExportServiceTest {
                 listOf("id", "itemType", "itemId", "action", "sectionType", "assetKind", "label", "vendor", "amount", "payer", "autoDebitBank", "debitDay", "account", "plannedMonth", "memo", "createdAt"),
                 result.headers
             )
-            assertEquals(listOf(1L, "BUDGET_ITEM", 5L, "CREATE", "FIXED_COST", null, "통신비", null, 33_250L), result.rows[0].take(9))
+            val row = result.rows[0]
+            assertEquals(listOf(1L, "BUDGET_ITEM", 5L, "CREATE", "FIXED_COST", null, "통신비", null), row.take(8))
+            assertEquals(33_250L, encryptedLongConverter.convertToEntityAttribute(row[8] as String))
         }
     }
 

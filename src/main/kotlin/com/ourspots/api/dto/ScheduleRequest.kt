@@ -21,8 +21,10 @@ data class ScheduleEventRequest(
     @field:NotNull
     val endAt: LocalDateTime,
 
+    // Boolean(원시 타입)이면 JSON에 키가 없을 때 Jackson이 예외 대신 조용히 false로 채워서 @field:NotNull이
+    // 무력화됨(PhotoVisibilityUpdateRequest.isPublic과 동일한 함정) — Boolean?로 열고 Bean Validation이 null을 직접 잡게 함
     @field:NotNull
-    val allDay: Boolean,
+    val allDay: Boolean?,
 
     @field:Size(max = 500)
     val memo: String? = null

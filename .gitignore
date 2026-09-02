@@ -44,3 +44,6 @@ out/
 
 # Local docs
 docs/
+
+# macOS
+.DS_Store

@@ -57,11 +57,19 @@ class EncryptedLongConverter(
 
     override fun convertToEntityAttribute(dbData: String?): Long? {
         if (dbData.isNullOrBlank()) return null
-        val combined = Base64.getDecoder().decode(dbData)
-        val iv = combined.copyOfRange(0, GCM_IV_LENGTH_BYTES)
-        val ciphertext = combined.copyOfRange(GCM_IV_LENGTH_BYTES, combined.size)
-        val cipher = Cipher.getInstance(ALGORITHM)
-        cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-        return String(cipher.doFinal(ciphertext), Charsets.UTF_8).toLong()
+        try {
+            val combined = Base64.getDecoder().decode(dbData)
+            val iv = combined.copyOfRange(0, GCM_IV_LENGTH_BYTES)
+            val ciphertext = combined.copyOfRange(GCM_IV_LENGTH_BYTES, combined.size)
+            val cipher = Cipher.getInstance(ALGORITHM)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+            return String(cipher.doFinal(ciphertext), Charsets.UTF_8).toLong()
+        } catch (e: Exception) {
+            // 원본 예외를 cause로 그대로 물려주지 않음 — 예: 손상된 암호문이 우연히 복호화되다 숫자 변환에
+            // 실패하면 NumberFormatException 메시지에 그 조각(잠재적으로 평문 일부)이 그대로 실릴 수 있고,
+            // 이 예외는 GlobalExceptionHandler가 error_logs 테이블(관리자 백업 다운로드 대상)과 서버 로그에
+            // 그대로 남기므로 고정 메시지만 던져서 원천 차단
+            throw IllegalStateException("가계 현황 금액 복호화에 실패했습니다.")
+        }
     }
 }
