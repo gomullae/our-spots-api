@@ -2,6 +2,7 @@ package com.ourspots.api.dto
 
 import com.ourspots.domain.schedule.entity.ScheduleCategory
 import jakarta.validation.constraints.AssertTrue
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -26,9 +27,26 @@ data class ScheduleEventRequest(
     @field:NotNull
     val allDay: Boolean?,
 
-    @field:Size(max = 500)
-    val memo: String? = null
+    // 이 저장(등록/수정)에 새로 딸려 들어오는(아직 confirm 안 된) 사진 개수 — DB에 저장되는 값이 아니라
+    // 텔레그램 알림에 "사진 N장 추가됨" 한 줄을 넣기 위한 신호. 프론트가 이벤트 저장 성공 후 그 개수만큼
+    // confirm()을 반복 호출하는 흐름은 그대로고, 그 호출들과 별개로 이 저장 요청 자체에도 개수를 실어 보냄
+    // (사진마다 알림이 따로 나가는 스팸을 피하려고 이벤트 저장 알림 하나에 묶음)
+    @field:Min(0)
+    val newPhotoCount: Int = 0
 ) {
     @AssertTrue(message = "종료 일시는 시작 일시보다 빠를 수 없습니다.")
     fun isEndAtValid(): Boolean = !endAt.isBefore(startAt)
 }
+
+data class ScheduleMemoRequest(
+    @field:NotBlank
+    @field:Size(max = 500)
+    val content: String
+)
+
+// 상세보기(ScheduleEventDetail)에서 붙여넣기로 사진을 바로 추가한 직후, 프론트가 그 배치의 성공 개수를
+// 실어 보내 텔레그램 알림만 트리거하는 용도 — 사진 자체는 이미 /api/photos/confirm으로 저장 완료된 상태
+data class SchedulePhotoAddedRequest(
+    @field:Min(1)
+    val count: Int
+)

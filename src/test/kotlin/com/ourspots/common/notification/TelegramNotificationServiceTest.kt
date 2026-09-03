@@ -306,29 +306,39 @@ class TelegramNotificationServiceTest {
         fun notifyScheduleCreated_shouldIncludeTitleCategoryAndDateTime() {
             val service = newService()
 
-            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00"))
 
             val text = capturedText()
             assertTrue(text.contains("새 일정 등록"))
             assertTrue(text.contains("커피약속"))
             assertTrue(text.contains("진우 일정"))
             assertTrue(text.contains("8월 15일(토) 오후 12:00"))
+            assertTrue(text.contains("https://ourspots.life/admin/schedule"))
         }
 
         @Test
-        fun notifyScheduleCreated_whenMemoNull_shouldOmitMemoLine() {
+        fun notifyScheduleCreated_whenNewPhotoCountZero_shouldOmitPhotoLine() {
             val service = newService()
 
-            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00"))
 
-            assertFalse(capturedText().contains("메모"))
+            assertFalse(capturedText().contains("사진"))
+        }
+
+        @Test
+        fun notifyScheduleCreated_whenNewPhotoCountPositive_shouldIncludePhotoLine() {
+            val service = newService()
+
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", newPhotoCount = 2))
+
+            assertTrue(capturedText().contains("사진: 2장 추가됨"))
         }
 
         @Test
         fun notifyScheduleCreated_whenScheduleChatIdConfigured_shouldSendThere() {
             val service = newService(chatId = "default-chat", scheduleChatId = "schedule-group-chat")
 
-            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00"))
 
             assertEquals("schedule-group-chat", capturedBody()["chat_id"])
         }
@@ -337,7 +347,7 @@ class TelegramNotificationServiceTest {
         fun notifyScheduleCreated_whenScheduleChatIdBlank_shouldFallBackToDefaultChat() {
             val service = newService(chatId = "default-chat", scheduleChatId = "")
 
-            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null))
+            service.notifyScheduleCreated(ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00"))
 
             assertEquals("default-chat", capturedBody()["chat_id"])
         }
@@ -350,8 +360,8 @@ class TelegramNotificationServiceTest {
         @Test
         fun notifyScheduleUpdated_whenTitleChanged_shouldShowArrow() {
             val service = newService()
-            val before = ScheduleEventSummary("곤충이야기 체험", "공유 일정", "8월 15일(토) 오후 12:00", null)
-            val after = ScheduleEventSummary("벌레 관찰 체험", "공유 일정", "8월 15일(토) 오후 12:00", null)
+            val before = ScheduleEventSummary("곤충이야기 체험", "공유 일정", "8월 15일(토) 오후 12:00")
+            val after = ScheduleEventSummary("벌레 관찰 체험", "공유 일정", "8월 15일(토) 오후 12:00")
 
             service.notifyScheduleUpdated(before, after)
 
@@ -359,51 +369,83 @@ class TelegramNotificationServiceTest {
             assertTrue(text.contains("제목: 곤충이야기 체험 → 벌레 관찰 체험"))
             assertTrue(text.contains("구분: 공유 일정"))
             assertFalse(text.contains("구분: 공유 일정 → 공유 일정"))
+            assertTrue(text.contains("https://ourspots.life/admin/schedule"))
         }
 
         @Test
         fun notifyScheduleUpdated_whenNothingChanged_shouldNotSend() {
             val service = newService()
-            val summary = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null)
+            val summary = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00")
 
             service.notifyScheduleUpdated(summary, summary.copy())
 
             verify(exactly = 0) { restTemplate.postForObject(any<String>(), any(), String::class.java) }
         }
 
+        // 제목/구분/일시는 그대로여도 사진이 새로 추가됐으면 그 자체로 알릴 이유가 있으므로 발송돼야 함
         @Test
-        fun notifyScheduleUpdated_whenMemoAdded_shouldShowPlaceholderForBefore() {
+        fun notifyScheduleUpdated_whenOnlyNewPhotoCountPositive_shouldStillSend() {
             val service = newService()
-            val before = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", null)
-            val after = before.copy(memo = "1시간반")
+            val before = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00")
+            val after = before.copy(newPhotoCount = 3)
 
             service.notifyScheduleUpdated(before, after)
 
-            assertTrue(capturedText().contains("메모: (없음) → 1시간반"))
+            assertTrue(capturedText().contains("사진: 3장 추가됨"))
         }
+    }
+
+    @Nested
+    @DisplayName("notifyScheduleMemoAdded")
+    inner class NotifyScheduleMemoAdded {
 
         @Test
-        fun notifyScheduleUpdated_whenMemoUnchanged_shouldShowPlainValue() {
+        fun notifyScheduleMemoAdded_shouldIncludeEventTitleAndMemoContentAndLink() {
             val service = newService()
-            val before = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", "메모")
-            val after = before.copy(title = "변경된 제목")
 
-            service.notifyScheduleUpdated(before, after)
+            service.notifyScheduleMemoAdded("헬스케어센터 서대문", "주차는 지하 2층")
 
             val text = capturedText()
-            assertTrue(text.contains("메모: 메모\n") || text.trimEnd().endsWith("메모: 메모"))
-            assertFalse(text.contains("메모: 메모 →"))
+            assertTrue(text.contains("메모 추가"))
+            assertTrue(text.contains("헬스케어센터 서대문"))
+            assertTrue(text.contains("주차는 지하 2층"))
+            assertTrue(text.contains("https://ourspots.life/admin/schedule"))
         }
 
         @Test
-        fun notifyScheduleUpdated_whenMemoRemoved_shouldShowPlaceholderForAfter() {
+        fun notifyScheduleMemoAdded_whenScheduleChatIdConfigured_shouldSendThere() {
+            val service = newService(chatId = "default-chat", scheduleChatId = "schedule-group-chat")
+
+            service.notifyScheduleMemoAdded("일정", "메모")
+
+            assertEquals("schedule-group-chat", capturedBody()["chat_id"])
+        }
+    }
+
+    @Nested
+    @DisplayName("notifyScheduleEventPhotoAdded")
+    inner class NotifyScheduleEventPhotoAdded {
+
+        @Test
+        fun notifyScheduleEventPhotoAdded_shouldIncludeEventTitleAndCountAndLink() {
             val service = newService()
-            val before = ScheduleEventSummary("커피약속", "진우 일정", "8월 15일(토) 오후 12:00", "1시간반")
-            val after = before.copy(memo = null)
 
-            service.notifyScheduleUpdated(before, after)
+            service.notifyScheduleEventPhotoAdded("헬스케어센터 서대문", 3)
 
-            assertTrue(capturedText().contains("메모: 1시간반 → (없음)"))
+            val text = capturedText()
+            assertTrue(text.contains("사진 추가"))
+            assertTrue(text.contains("헬스케어센터 서대문"))
+            assertTrue(text.contains("3장 추가됨"))
+            assertTrue(text.contains("https://ourspots.life/admin/schedule"))
+        }
+
+        @Test
+        fun notifyScheduleEventPhotoAdded_whenScheduleChatIdConfigured_shouldSendThere() {
+            val service = newService(chatId = "default-chat", scheduleChatId = "schedule-group-chat")
+
+            service.notifyScheduleEventPhotoAdded("일정", 1)
+
+            assertEquals("schedule-group-chat", capturedBody()["chat_id"])
         }
     }
 

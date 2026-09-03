@@ -32,9 +32,6 @@ class ScheduleEvent(
     @Column(nullable = false)
     var allDay: Boolean,
 
-    @Column(length = 500)
-    var memo: String? = null,
-
     @Column(nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 

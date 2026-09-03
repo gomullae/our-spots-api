@@ -57,6 +57,9 @@ class ScheduleControllerIntegrationTest {
     fun setUp() {
         // deleteAll()은 @SQLDelete 때문에 소프트 삭제(UPDATE)로 바뀌고, deleteAllInBatch()도 @SQLRestriction이 적용돼
         // "deleted_at IS NULL"인 행만 지워짐(이미 소프트 삭제된 행은 안 지워짐) → JDBC로 직접 물리 삭제
+        // schedule_memos가 schedule_events를 FK로 참조하진 않지만, 이전 테스트의 메모가 남아있으면
+        // 개수 상한 테스트 등이 오염되므로 먼저 정리
+        jdbcTemplate.update("DELETE FROM schedule_memos")
         jdbcTemplate.update("DELETE FROM schedule_events")
     }
 
@@ -312,13 +315,255 @@ class ScheduleControllerIntegrationTest {
         }
     }
 
+    @Nested
+    @DisplayName("POST /api/schedules/{id}/memos")
+    inner class AddMemo {
+
+        @Test
+        fun addMemo_whenAuthenticated_shouldCreateMemoAndAppearInEvent() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                post("/api/schedules/${event.id}/memos")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"주차는 지하 2층"}""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.data.content").value("주차는 지하 2층"))
+
+            mockMvc.perform(
+                get("/api/schedules?start=2026-08-01T00:00:00&end=2026-08-31T23:59:59")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(jsonPath("$.data[0].memos.length()").value(1))
+        }
+
+        @Test
+        fun addMemo_whenContentBlank_shouldReturn400() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                post("/api/schedules/${event.id}/memos")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":""}""")
+            )
+                .andExpect(status().isBadRequest)
+        }
+
+        @Test
+        fun addMemo_whenAtLimit_shouldReturn400() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+            repeat(10) {
+                mockMvc.perform(
+                    post("/api/schedules/${event.id}/memos")
+                        .header("Authorization", "Bearer $authToken")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"content":"메모 $it"}""")
+                )
+                    .andExpect(status().isCreated)
+            }
+
+            mockMvc.perform(
+                post("/api/schedules/${event.id}/memos")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"11번째 메모"}""")
+            )
+                .andExpect(status().isBadRequest)
+        }
+
+        @Test
+        fun addMemo_whenNotAuthenticated_shouldReturn401() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                post("/api/schedules/${event.id}/memos")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"메모"}""")
+            )
+                .andExpect(status().isUnauthorized)
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /api/schedules/{id}/notify-photos-added")
+    inner class NotifyPhotosAdded {
+
+        @Test
+        fun notifyPhotosAdded_whenAuthenticated_shouldReturn204() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                post("/api/schedules/${event.id}/notify-photos-added")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"count":2}""")
+            )
+                .andExpect(status().isNoContent)
+        }
+
+        @Test
+        fun notifyPhotosAdded_whenCountBelowOne_shouldReturn400() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                post("/api/schedules/${event.id}/notify-photos-added")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"count":0}""")
+            )
+                .andExpect(status().isBadRequest)
+        }
+
+        @Test
+        fun notifyPhotosAdded_whenEventNotFound_shouldReturn404() {
+            mockMvc.perform(
+                post("/api/schedules/99999/notify-photos-added")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"count":1}""")
+            )
+                .andExpect(status().isNotFound)
+        }
+
+        @Test
+        fun notifyPhotosAdded_whenNotAuthenticated_shouldReturn401() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                post("/api/schedules/${event.id}/notify-photos-added")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"count":1}""")
+            )
+                .andExpect(status().isUnauthorized)
+        }
+    }
+
+    @Nested
+    @DisplayName("PUT /api/schedules/{id}/memos/{memoId}")
+    inner class UpdateMemo {
+
+        @Test
+        fun updateMemo_whenExists_shouldUpdateContentAndReflectInEvent() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+            val createResult = mockMvc.perform(
+                post("/api/schedules/${event.id}/memos")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"원본 메모"}""")
+            ).andReturn()
+            val memoId = objectMapper.readTree(createResult.response.contentAsString).get("data").get("id").asLong()
+
+            mockMvc.perform(
+                put("/api/schedules/${event.id}/memos/$memoId")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"수정된 메모"}""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.content").value("수정된 메모"))
+
+            mockMvc.perform(
+                get("/api/schedules?start=2026-08-01T00:00:00&end=2026-08-31T23:59:59")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(jsonPath("$.data[0].memos[0].content").value("수정된 메모"))
+        }
+
+        @Test
+        fun updateMemo_whenContentBlank_shouldReturn400() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+            val createResult = mockMvc.perform(
+                post("/api/schedules/${event.id}/memos")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"원본 메모"}""")
+            ).andReturn()
+            val memoId = objectMapper.readTree(createResult.response.contentAsString).get("data").get("id").asLong()
+
+            mockMvc.perform(
+                put("/api/schedules/${event.id}/memos/$memoId")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":""}""")
+            )
+                .andExpect(status().isBadRequest)
+        }
+
+        @Test
+        fun updateMemo_whenNotFound_shouldReturn404() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                put("/api/schedules/${event.id}/memos/99999")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"수정"}""")
+            )
+                .andExpect(status().isNotFound)
+        }
+
+        @Test
+        fun updateMemo_whenNotAuthenticated_shouldReturn401() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                put("/api/schedules/${event.id}/memos/1")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"수정"}""")
+            )
+                .andExpect(status().isUnauthorized)
+        }
+    }
+
+    @Nested
+    @DisplayName("DELETE /api/schedules/{id}/memos/{memoId}")
+    inner class DeleteMemo {
+
+        @Test
+        fun deleteMemo_whenExists_shouldSoftDeleteAndDisappearFromEvent() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+            val createResult = mockMvc.perform(
+                post("/api/schedules/${event.id}/memos")
+                    .header("Authorization", "Bearer $authToken")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"삭제될 메모"}""")
+            ).andReturn()
+            val memoId = objectMapper.readTree(createResult.response.contentAsString).get("data").get("id").asLong()
+
+            mockMvc.perform(
+                delete("/api/schedules/${event.id}/memos/$memoId")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isNoContent)
+
+            mockMvc.perform(
+                get("/api/schedules?start=2026-08-01T00:00:00&end=2026-08-31T23:59:59")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(jsonPath("$.data[0].memos.length()").value(0))
+        }
+
+        @Test
+        fun deleteMemo_whenNotFound_shouldReturn404() {
+            val event = createTestEvent(LocalDateTime.of(2026, 8, 19, 10, 0))
+
+            mockMvc.perform(
+                delete("/api/schedules/${event.id}/memos/99999")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isNotFound)
+        }
+    }
+
     private fun validRequest() = ScheduleEventRequest(
         title = "커피약속",
         category = ScheduleCategory.JINWOO,
         startAt = LocalDateTime.of(2026, 8, 10, 10, 0),
         endAt = LocalDateTime.of(2026, 8, 10, 11, 30),
-        allDay = false,
-        memo = "1시간반"
+        allDay = false
     )
 
     private fun createTestEvent(startAt: LocalDateTime): ScheduleEvent {

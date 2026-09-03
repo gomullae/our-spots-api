@@ -15,8 +15,9 @@ import java.util.concurrent.ConcurrentHashMap
 // 카테고리(식비/생활비)별 지출 합계 + 결제자(진우/초영) 구분 합계
 data class CategorySpend(val total: Long, val jinwooTotal: Long, val choyoungTotal: Long)
 
-// 일정 알림용 사람이 읽는 형태로 이미 가공된 값 — ScheduleCategory 등 도메인 타입을 common 계층에 끌어들이지 않기 위해 라벨/날짜 포맷은 호출부(ScheduleService)가 만들어서 넘김
-data class ScheduleEventSummary(val title: String, val categoryLabel: String, val dateTimeText: String, val memo: String?)
+// 일정 알림용 사람이 읽는 형태로 이미 가공된 값 — ScheduleCategory 등 도메인 타입을 common 계층에 끌어들이지 않기 위해 라벨/날짜 포맷은 호출부(ScheduleService)가 만들어서 넘김.
+// memo는 스레드형 다건 메모(schedule_memos)로 분리되면서 이 요약/diff 대상에서 빠짐 — 메모 추가는 notifyScheduleMemoAdded()가 별도로 알림
+data class ScheduleEventSummary(val title: String, val categoryLabel: String, val dateTimeText: String, val newPhotoCount: Int = 0)
 
 // 가계 현황(수입/고정비/자산/지출예정액/구독료) 알림용 — HouseholdSectionType/HouseholdPayer 등 도메인
 // 타입을 common 계층에 끌어들이지 않기 위해 섹션/대상자 라벨은 호출부(HouseholdBudgetService)가 만들어서
@@ -143,25 +144,19 @@ class TelegramNotificationService(
         sb.append("제목: ${escapeHtml(truncate(summary.title, 60))}\n")
         sb.append("구분: ${escapeHtml(summary.categoryLabel)}\n")
         sb.append("일시: ${escapeHtml(summary.dateTimeText)}\n")
-        summary.memo?.let { sb.append("메모: ${escapeHtml(truncate(it, 150))}\n") }
+        if (summary.newPhotoCount > 0) sb.append("사진: ${summary.newPhotoCount}장 추가됨\n")
+        sb.append("\n${scheduleUrl()}")
         send(sb.toString().trimEnd(), chatId = scheduleChatId.ifBlank { defaultChatId })
     }
 
-    // 안 바뀐 필드는 값만, 바뀐 필드는 "이전 → 이후"로 표기 — 아무것도 안 바뀌었으면 알림 자체를 보내지 않음
+    // 안 바뀐 필드는 값만, 바뀐 필드는 "이전 → 이후"로 표기 — 제목/구분/일시 중 아무것도 안 바뀌었어도
+    // 사진이 새로 추가됐으면(newPhotoCount > 0) 그 자체로 알릴 이유가 있으므로 알림을 보냄
     fun notifyScheduleUpdated(before: ScheduleEventSummary, after: ScheduleEventSummary) {
         val titleLine = diffText(escapeHtml(truncate(before.title, 60)), escapeHtml(truncate(after.title, 60)))
         val categoryLine = diffText(escapeHtml(before.categoryLabel), escapeHtml(after.categoryLabel))
         val dateTimeLine = diffText(escapeHtml(before.dateTimeText), escapeHtml(after.dateTimeText))
-        val memoLine = if (before.memo == null && after.memo == null) {
-            null
-        } else {
-            diffText(
-                escapeHtml(truncate(before.memo ?: "(없음)", 150)),
-                escapeHtml(truncate(after.memo ?: "(없음)", 150))
-            )
-        }
 
-        val hasChange = titleLine.changed || categoryLine.changed || dateTimeLine.changed || memoLine?.changed == true
+        val hasChange = titleLine.changed || categoryLine.changed || dateTimeLine.changed || after.newPhotoCount > 0
         if (!hasChange) return
 
         val sb = StringBuilder()
@@ -169,9 +164,33 @@ class TelegramNotificationService(
         sb.append("제목: ${titleLine.text}\n")
         sb.append("구분: ${categoryLine.text}\n")
         sb.append("일시: ${dateTimeLine.text}\n")
-        memoLine?.let { sb.append("메모: ${it.text}\n") }
+        if (after.newPhotoCount > 0) sb.append("사진: ${after.newPhotoCount}장 추가됨\n")
+        sb.append("\n${scheduleUrl()}")
         send(sb.toString().trimEnd(), chatId = scheduleChatId.ifBlank { defaultChatId })
     }
+
+    // 메모는 스레드형(건별 추가/삭제)이라 등록/수정 알림과 별개로, 추가될 때마다 그 내용을 바로 알림(삭제는 알림 대상 아님 — 다른 도메인과 동일 관례)
+    fun notifyScheduleMemoAdded(eventTitle: String, memoContent: String) {
+        val sb = StringBuilder()
+        sb.append("📝 <b>일정 메모 추가</b>\n")
+        sb.append("일정: ${escapeHtml(truncate(eventTitle, 60))}\n")
+        sb.append("메모: ${escapeHtml(truncate(memoContent, 150))}\n")
+        sb.append("\n${scheduleUrl()}")
+        send(sb.toString().trimEnd(), chatId = scheduleChatId.ifBlank { defaultChatId })
+    }
+
+    // 상세보기(ScheduleEventDetail)에서 붙여넣기로 사진을 바로 추가하는 경로 전용 — 일정 저장(등록/수정)을
+    // 거치지 않고 즉시 confirm되므로 newPhotoCount로 묶을 수 없어, 그 자리에서 바로 알림(한 번에 붙여넣은 사진은 개수로 묶어서 1건만 발송)
+    fun notifyScheduleEventPhotoAdded(eventTitle: String, photoCount: Int) {
+        val sb = StringBuilder()
+        sb.append("📷 <b>일정 사진 추가</b>\n")
+        sb.append("일정: ${escapeHtml(truncate(eventTitle, 60))}\n")
+        sb.append("사진: ${photoCount}장 추가됨\n")
+        sb.append("\n${scheduleUrl()}")
+        send(sb.toString().trimEnd(), chatId = scheduleChatId.ifBlank { defaultChatId })
+    }
+
+    private fun scheduleUrl() = "https://ourspots.life/admin/schedule"
 
     // 가계 현황 채팅방(가계부 주간 정산과 동일한 expenseChatId) — 금액은 DB엔 암호화해서 저장하지만
     // 알림 메시지엔 당연히 복호화된 실제 숫자가 들어감(가계부 주간 정산도 이미 같은 채널에 실제 금액을 보내고 있어 기존 관례와 동일)

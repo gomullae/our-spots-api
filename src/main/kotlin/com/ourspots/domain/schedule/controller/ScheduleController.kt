@@ -2,7 +2,10 @@ package com.ourspots.domain.schedule.controller
 
 import com.ourspots.api.dto.ScheduleEventRequest
 import com.ourspots.api.dto.ScheduleEventResponse
+import com.ourspots.api.dto.ScheduleMemoRequest
+import com.ourspots.api.dto.ScheduleMemoResponse
 import com.ourspots.api.dto.ScheduleMetaResponse
+import com.ourspots.api.dto.SchedulePhotoAddedRequest
 import com.ourspots.common.response.ApiResponse
 import com.ourspots.domain.schedule.service.ScheduleService
 import jakarta.validation.Valid
@@ -52,4 +55,37 @@ class ScheduleController(
     @PostMapping("/{id}/restore")
     fun restoreEvent(@PathVariable id: Long): ApiResponse<ScheduleEventResponse> =
         ApiResponse.success(scheduleService.restoreEvent(id))
+
+    // 상세보기에서 붙여넣기로 사진을 바로 추가한 직후 프론트가 호출 — 사진 자체는 이미 /api/photos/confirm으로
+    // 저장 완료된 상태라 여기선 알림만 발송(별도 응답 데이터 없음)
+    @PostMapping("/{id}/notify-photos-added")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun notifyPhotosAdded(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: SchedulePhotoAddedRequest
+    ) {
+        scheduleService.notifyPhotosAdded(id, request)
+    }
+
+    @PostMapping("/{id}/memos")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun addMemo(
+        @PathVariable id: Long,
+        @Valid @RequestBody request: ScheduleMemoRequest
+    ): ApiResponse<ScheduleMemoResponse> =
+        ApiResponse.success(scheduleService.addMemo(id, request))
+
+    @PutMapping("/{id}/memos/{memoId}")
+    fun updateMemo(
+        @PathVariable id: Long,
+        @PathVariable memoId: Long,
+        @Valid @RequestBody request: ScheduleMemoRequest
+    ): ApiResponse<ScheduleMemoResponse> =
+        ApiResponse.success(scheduleService.updateMemo(id, memoId, request))
+
+    @DeleteMapping("/{id}/memos/{memoId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deleteMemo(@PathVariable id: Long, @PathVariable memoId: Long) {
+        scheduleService.deleteMemo(id, memoId)
+    }
 }

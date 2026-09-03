@@ -130,14 +130,15 @@ class BackupExportService(
                     }
             )
 
+            // memo는 schedule_memos 테이블로 분리됨(2026-09-03~) — 이 백업 대상에선 빠짐(필요하면 별도 백업 테이블로 추가)
             BackupTable.SCHEDULE_EVENTS -> TableData(
-                listOf("id", "title", "category", "startAt", "endAt", "allDay", "memo", "createdAt", "updatedAt", "deletedAt"),
+                listOf("id", "title", "category", "startAt", "endAt", "allDay", "createdAt", "updatedAt", "deletedAt"),
                 since(period, scheduleEventRepository::findAllIncludingDeleted) { scheduleEventRepository.findAllIncludingDeletedSince(cutoff) }
                     .sortedByDescending { it.createdAt }
                     .map {
                         listOf(
                             it.id, it.title, it.category.name, it.startAt.toString(), it.endAt.toString(),
-                            it.allDay, it.memo, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
+                            it.allDay, it.createdAt.toString(), it.updatedAt.toString(), it.deletedAt?.toString()
                         )
                     }
             )

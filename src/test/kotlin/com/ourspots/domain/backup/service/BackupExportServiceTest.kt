@@ -220,14 +220,14 @@ class BackupExportServiceTest {
             val startAt = LocalDateTime.of(2026, 8, 19, 10, 0)
             val event = ScheduleEvent(
                 id = 1, title = "커피약속", category = ScheduleCategory.JINWOO,
-                startAt = startAt, endAt = startAt, allDay = false, memo = "1시간"
+                startAt = startAt, endAt = startAt, allDay = false
             )
             every { scheduleEventRepository.findAllIncludingDeleted() } returns listOf(event)
 
             val result = backupExportService.fetchTableData(BackupTable.SCHEDULE_EVENTS, BackupPeriod.ALL)
 
-            assertEquals(listOf("id", "title", "category", "startAt", "endAt", "allDay", "memo", "createdAt", "updatedAt", "deletedAt"), result.headers)
-            assertEquals(listOf(1L, "커피약속", "JINWOO", startAt.toString(), startAt.toString(), false, "1시간"), result.rows[0].take(7))
+            assertEquals(listOf("id", "title", "category", "startAt", "endAt", "allDay", "createdAt", "updatedAt", "deletedAt"), result.headers)
+            assertEquals(listOf(1L, "커피약속", "JINWOO", startAt.toString(), startAt.toString(), false), result.rows[0].take(6))
         }
 
         @Test

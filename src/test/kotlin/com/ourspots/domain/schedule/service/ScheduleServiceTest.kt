@@ -1,12 +1,17 @@
 package com.ourspots.domain.schedule.service
 
 import com.ourspots.api.dto.ScheduleEventRequest
+import com.ourspots.api.dto.ScheduleMemoRequest
+import com.ourspots.api.dto.SchedulePhotoAddedRequest
+import com.ourspots.common.exception.LimitExceededException
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.notification.TelegramNotificationService
 import com.ourspots.domain.photo.service.PhotoService
 import com.ourspots.domain.schedule.entity.ScheduleCategory
 import com.ourspots.domain.schedule.entity.ScheduleEvent
+import com.ourspots.domain.schedule.entity.ScheduleMemo
 import com.ourspots.domain.schedule.repository.ScheduleEventRepository
+import com.ourspots.domain.schedule.repository.ScheduleMemoRepository
 import io.mockk.MockKAnnotations
 import io.mockk.Runs
 import io.mockk.every
@@ -28,6 +33,9 @@ class ScheduleServiceTest {
     @MockK
     private lateinit var scheduleEventRepository: ScheduleEventRepository
 
+    @MockK
+    private lateinit var scheduleMemoRepository: ScheduleMemoRepository
+
     @MockK(relaxed = true)
     private lateinit var telegramNotificationService: TelegramNotificationService
 
@@ -43,6 +51,11 @@ class ScheduleServiceTest {
         // 사진 기능은 별도 테스트에서 검증 — 여기선 항상 빈 목록을 반환하게 해서 기존 테스트 로직에 영향 없게 함
         every { photoService.listByEntity(any(), any()) } returns emptyList()
         every { photoService.listByEntities(any(), any()) } returns emptyMap()
+        // 메모도 마찬가지로 기본값은 빈 목록 — 메모 자체를 검증하는 테스트에서만 별도로 stub
+        every { scheduleMemoRepository.findByScheduleEventIdInOrderByCreatedAtAsc(any<Collection<Long>>()) } returns emptyList()
+        every { scheduleMemoRepository.findByScheduleEventIdOrderByCreatedAtAsc(any()) } returns emptyList()
+        // addMemo/updateMemo/deleteMemo가 캐시 무효화를 위해 항상 호출 — 반환값 자체는 검증 대상 아니라 공통 기본값
+        every { scheduleEventRepository.touchUpdatedAt(any()) } returns 1
     }
 
     private fun createEvent(
@@ -51,16 +64,14 @@ class ScheduleServiceTest {
         endAt: LocalDateTime = startAt,
         category: ScheduleCategory = ScheduleCategory.SHARED,
         title: String = "일정",
-        allDay: Boolean = false,
-        memo: String? = null
+        allDay: Boolean = false
     ) = ScheduleEvent(
         id = id,
         title = title,
         category = category,
         startAt = startAt,
         endAt = endAt,
-        allDay = allDay,
-        memo = memo
+        allDay = allDay
     )
 
     @Nested
@@ -118,6 +129,21 @@ class ScheduleServiceTest {
 
             verify { scheduleEventRepository.findOverlapping(start, end, true) }
         }
+
+        @Test
+        fun getEvents_shouldIncludeMemosGroupedByEvent() {
+            val start = LocalDateTime.of(2026, 8, 1, 0, 0)
+            val end = LocalDateTime.of(2026, 8, 31, 23, 59)
+            val events = listOf(createEvent(1L, LocalDateTime.of(2026, 8, 10, 10, 0)))
+            every { scheduleEventRepository.findOverlapping(start, end, false) } returns events
+            every { scheduleMemoRepository.findByScheduleEventIdInOrderByCreatedAtAsc(listOf(1L)) } returns
+                listOf(ScheduleMemo(id = 1L, scheduleEventId = 1L, content = "주차는 지하 2층"))
+
+            val result = scheduleService.getEvents(start, end)
+
+            assertEquals(1, result[0].memos.size)
+            assertEquals("주차는 지하 2층", result[0].memos[0].content)
+        }
     }
 
     @Nested
@@ -131,8 +157,7 @@ class ScheduleServiceTest {
                 category = ScheduleCategory.JINWOO,
                 startAt = LocalDateTime.of(2026, 8, 10, 10, 0),
                 endAt = LocalDateTime.of(2026, 8, 10, 11, 30),
-                allDay = false,
-                memo = "1시간반"
+                allDay = false
             )
             every { scheduleEventRepository.save(any<ScheduleEvent>()) } answers { firstArg() }
 
@@ -140,7 +165,6 @@ class ScheduleServiceTest {
 
             assertEquals("커피약속", result.title)
             assertEquals(ScheduleCategory.JINWOO, result.category)
-            assertEquals("1시간반", result.memo)
             verify { telegramNotificationService.notifyScheduleCreated(any()) }
         }
     }
@@ -157,8 +181,7 @@ class ScheduleServiceTest {
                 category = ScheduleCategory.CHOYOUNG,
                 startAt = LocalDateTime.of(2026, 8, 11, 9, 0),
                 endAt = LocalDateTime.of(2026, 8, 11, 9, 0),
-                allDay = true,
-                memo = null
+                allDay = true
             )
             every { scheduleEventRepository.findById(1L) } returns Optional.of(existing)
             every { scheduleEventRepository.save(any<ScheduleEvent>()) } answers { firstArg() }
@@ -237,6 +260,145 @@ class ScheduleServiceTest {
 
             assertThrows<NotFoundException> {
                 scheduleService.restoreEvent(99L)
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("addMemo")
+    inner class AddMemo {
+
+        @Test
+        fun addMemo_whenUnderLimit_shouldSaveAndNotify() {
+            val event = createEvent(1L, LocalDateTime.now(), title = "헬스케어센터 서대문")
+            every { scheduleEventRepository.findById(1L) } returns Optional.of(event)
+            every { scheduleMemoRepository.countByScheduleEventId(1L) } returns 2L
+            every { scheduleMemoRepository.save(any<ScheduleMemo>()) } answers { firstArg() }
+
+            val result = scheduleService.addMemo(1L, ScheduleMemoRequest(content = "주차는 지하 2층"))
+
+            assertEquals("주차는 지하 2층", result.content)
+            verify { telegramNotificationService.notifyScheduleMemoAdded("헬스케어센터 서대문", "주차는 지하 2층") }
+            // ScheduleMemo는 ScheduleEvent와 FK 없이 느슨하게 연결돼있어 저장만으로는 event.updatedAt이 안 바뀜 —
+            // 프론트가 /api/schedules/meta로 캐시 유효성을 판단하므로 touchUpdatedAt()을 직접 호출해야 캐시가 무효화됨
+            verify { scheduleEventRepository.touchUpdatedAt(1L) }
+        }
+
+        @Test
+        fun addMemo_whenAtLimit_shouldThrowLimitExceededException() {
+            val event = createEvent(1L, LocalDateTime.now())
+            every { scheduleEventRepository.findById(1L) } returns Optional.of(event)
+            every { scheduleMemoRepository.countByScheduleEventId(1L) } returns 10L
+
+            assertThrows<LimitExceededException> {
+                scheduleService.addMemo(1L, ScheduleMemoRequest(content = "11번째 메모"))
+            }
+            verify(exactly = 0) { scheduleMemoRepository.save(any<ScheduleMemo>()) }
+        }
+
+        @Test
+        fun addMemo_whenEventNotFound_shouldThrowNotFoundException() {
+            every { scheduleEventRepository.findById(99L) } returns Optional.empty()
+
+            assertThrows<NotFoundException> {
+                scheduleService.addMemo(99L, ScheduleMemoRequest(content = "메모"))
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("notifyPhotosAdded")
+    inner class NotifyPhotosAdded {
+
+        @Test
+        fun notifyPhotosAdded_whenEventExists_shouldNotify() {
+            val event = createEvent(1L, LocalDateTime.now(), title = "헬스케어센터 서대문")
+            every { scheduleEventRepository.findById(1L) } returns Optional.of(event)
+
+            scheduleService.notifyPhotosAdded(1L, SchedulePhotoAddedRequest(count = 3))
+
+            verify { telegramNotificationService.notifyScheduleEventPhotoAdded("헬스케어센터 서대문", 3) }
+        }
+
+        @Test
+        fun notifyPhotosAdded_whenEventNotFound_shouldThrowNotFoundException() {
+            every { scheduleEventRepository.findById(99L) } returns Optional.empty()
+
+            assertThrows<NotFoundException> {
+                scheduleService.notifyPhotosAdded(99L, SchedulePhotoAddedRequest(count = 1))
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("updateMemo")
+    inner class UpdateMemo {
+
+        @Test
+        fun updateMemo_whenBelongsToEvent_shouldUpdateContent() {
+            val memo = ScheduleMemo(id = 10L, scheduleEventId = 1L, content = "원본 메모")
+            every { scheduleMemoRepository.findById(10L) } returns Optional.of(memo)
+            every { scheduleMemoRepository.save(any<ScheduleMemo>()) } answers { firstArg() }
+
+            val result = scheduleService.updateMemo(1L, 10L, ScheduleMemoRequest(content = "수정된 메모"))
+
+            assertEquals("수정된 메모", result.content)
+            verify(exactly = 0) { telegramNotificationService.notifyScheduleMemoAdded(any(), any()) }
+            verify { scheduleEventRepository.touchUpdatedAt(1L) }
+        }
+
+        @Test
+        fun updateMemo_whenBelongsToDifferentEvent_shouldThrow() {
+            val memo = ScheduleMemo(id = 10L, scheduleEventId = 2L, content = "메모")
+            every { scheduleMemoRepository.findById(10L) } returns Optional.of(memo)
+
+            assertThrows<IllegalArgumentException> {
+                scheduleService.updateMemo(1L, 10L, ScheduleMemoRequest(content = "수정"))
+            }
+        }
+
+        @Test
+        fun updateMemo_whenNotFound_shouldThrowNotFoundException() {
+            every { scheduleMemoRepository.findById(99L) } returns Optional.empty()
+
+            assertThrows<NotFoundException> {
+                scheduleService.updateMemo(1L, 99L, ScheduleMemoRequest(content = "수정"))
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("deleteMemo")
+    inner class DeleteMemo {
+
+        @Test
+        fun deleteMemo_whenBelongsToEvent_shouldDelete() {
+            val memo = ScheduleMemo(id = 10L, scheduleEventId = 1L, content = "메모")
+            every { scheduleMemoRepository.findById(10L) } returns Optional.of(memo)
+            every { scheduleMemoRepository.delete(memo) } just Runs
+
+            scheduleService.deleteMemo(1L, 10L)
+
+            verify { scheduleMemoRepository.delete(memo) }
+            verify { scheduleEventRepository.touchUpdatedAt(1L) }
+        }
+
+        @Test
+        fun deleteMemo_whenBelongsToDifferentEvent_shouldThrow() {
+            val memo = ScheduleMemo(id = 10L, scheduleEventId = 2L, content = "메모")
+            every { scheduleMemoRepository.findById(10L) } returns Optional.of(memo)
+
+            assertThrows<IllegalArgumentException> {
+                scheduleService.deleteMemo(1L, 10L)
+            }
+        }
+
+        @Test
+        fun deleteMemo_whenNotFound_shouldThrowNotFoundException() {
+            every { scheduleMemoRepository.findById(99L) } returns Optional.empty()
+
+            assertThrows<NotFoundException> {
+                scheduleService.deleteMemo(1L, 99L)
             }
         }
     }

@@ -41,6 +41,12 @@ class GlobalExceptionHandler(
         return ApiResponse.error(e.message ?: "Duplicate entry")
     }
 
+    @ExceptionHandler(LimitExceededException::class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    fun handleLimitExceededException(e: LimitExceededException): ApiResponse<Nothing> {
+        return ApiResponse.error(e.message ?: "Limit exceeded")
+    }
+
     @ExceptionHandler(UnauthorizedException::class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     fun handleUnauthorizedException(e: UnauthorizedException, request: HttpServletRequest): ApiResponse<Nothing> {
