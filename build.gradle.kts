@@ -30,6 +30,12 @@ dependencies {
 	// 에이전트나 공개 엔드포인트 노출 없이 이 앱 프로세스 안에서 바로 내보냄)
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("io.micrometer:micrometer-registry-otlp")
+	// 서버 로그도 Grafana Cloud(Loki)로 push(2026-09-02~) — 메트릭(Micrometer)과는 별개의 독립된 파이프라인이라
+	// 트레이서/미터는 등록하지 않고 로그 전용으로만 OTel SDK를 최소 구성(OtelLogging 참고)
+	implementation(platform("io.opentelemetry:opentelemetry-bom:1.51.0"))
+	implementation("io.opentelemetry:opentelemetry-sdk")
+	implementation("io.opentelemetry:opentelemetry-exporter-otlp")
+	implementation("io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:2.16.0-alpha")
 	implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")

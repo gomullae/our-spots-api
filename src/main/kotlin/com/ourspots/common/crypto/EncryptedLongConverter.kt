@@ -29,19 +29,22 @@ class EncryptedLongConverter(
     }
 
     private val secureRandom = SecureRandom()
-    private val secretKey: SecretKeySpec
 
     // JWT_SECRET과 동일하게 "키가 없거나 잘못되면 앱 시작 자체를 막는" fail-fast 방식 — 이 컨버터가 적용된
-    // 컬럼이 있는 이상 키 없이 조용히 돌아가다가 나중에 런타임 에러로 터지는 것보다 배포 시점에 바로 드러나는 게 안전함
-    init {
-        require(encryptionKeyBase64.isNotBlank()) {
+    // 컬럼이 있는 이상 키 없이 조용히 돌아가다가 나중에 런타임 에러로 터지는 것보다 배포 시점에 바로 드러나는 게 안전함.
+    // init 블록에서 나중에 대입하는 대신 프로퍼티를 직접 초기화 — Spring 프록시용으로 open된 클래스에서
+    // val을 init 블록에서만 대입하면 "초기화/final/abstract 중 하나여야 함" 경고가 남(향후 Kotlin에서 에러로 승격 예정)
+    private val secretKey: SecretKeySpec = createSecretKey(encryptionKeyBase64)
+
+    private fun createSecretKey(base64Key: String): SecretKeySpec {
+        require(base64Key.isNotBlank()) {
             "HOUSEHOLD_ENCRYPTION_KEY가 설정되지 않았습니다. openssl rand -base64 32 로 생성해서 .env에 추가하세요."
         }
-        val keyBytes = Base64.getDecoder().decode(encryptionKeyBase64)
+        val keyBytes = Base64.getDecoder().decode(base64Key)
         require(keyBytes.size == 32) {
             "HOUSEHOLD_ENCRYPTION_KEY는 32바이트(AES-256, base64 인코딩)여야 합니다."
         }
-        secretKey = SecretKeySpec(keyBytes, "AES")
+        return SecretKeySpec(keyBytes, "AES")
     }
 
     override fun convertToDatabaseColumn(attribute: Long?): String? {

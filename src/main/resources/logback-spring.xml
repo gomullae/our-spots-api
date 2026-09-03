@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Spring Boot 기본 콘솔 로그 설정을 그대로 가져다 씀 — journalctl로 보이는 형식/색상 등은 그대로 유지 -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <!-- OtelLogging.install()로 실제 OpenTelemetrySdk가 연결됨(main()에서 runApplication보다 먼저 호출) —
+         값이 없어서 install()이 스킵되면 이 appender는 그냥 아무것도 안 하고 조용히 무시됨 -->
+    <appender name="OpenTelemetry" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="OpenTelemetry"/>
+    </root>
+</configuration>
