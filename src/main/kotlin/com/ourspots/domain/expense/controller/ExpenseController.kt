@@ -23,9 +23,11 @@ class ExpenseController(
     fun getRecords(
         @RequestParam startDate: LocalDate,
         @RequestParam endDate: LocalDate,
-        @RequestParam(defaultValue = "false") includeDeleted: Boolean
+        @RequestParam(defaultValue = "false") includeDeleted: Boolean,
+        // 사용처(merchant) LIKE 검색 — "이력" 탭 검색어 입력용, 이스케이프는 ExpenseService에서 처리
+        @RequestParam(required = false) keyword: String?
     ): ApiResponse<List<ExpenseRecordResponse>> =
-        ApiResponse.success(expenseService.getRecords(startDate, endDate, includeDeleted))
+        ApiResponse.success(expenseService.getRecords(startDate, endDate, includeDeleted, keyword))
 
     // 프론트가 로컬(localStorage) 캐시를 그대로 써도 되는지 확인하는 가벼운 엔드포인트 — 전체 목록 대신 count/lastModified만 반환
     @GetMapping("/meta")

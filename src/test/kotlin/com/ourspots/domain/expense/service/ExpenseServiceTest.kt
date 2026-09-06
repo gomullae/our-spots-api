@@ -97,7 +97,7 @@ class ExpenseServiceTest {
                 createRecord(2L, LocalDate.of(2026, 8, 19)),
                 createRecord(1L, LocalDate.of(2026, 8, 1))
             )
-            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false) } returns records
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false, null) } returns records
 
             val result = expenseService.getRecords(start, end)
 
@@ -109,11 +109,33 @@ class ExpenseServiceTest {
         fun getRecords_whenIncludeDeletedTrue_shouldPassThroughToRepository() {
             val start = LocalDate.of(2026, 8, 1)
             val end = LocalDate.of(2026, 8, 31)
-            every { expenseRecordRepository.findByExpenseDateBetween(start, end, true) } returns emptyList()
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, true, null) } returns emptyList()
 
             expenseService.getRecords(start, end, includeDeleted = true)
 
-            verify { expenseRecordRepository.findByExpenseDateBetween(start, end, true) }
+            verify { expenseRecordRepository.findByExpenseDateBetween(start, end, true, null) }
+        }
+
+        @Test
+        fun getRecords_whenKeywordGiven_shouldEscapeAndPassToRepository() {
+            val start = LocalDate.of(2026, 8, 1)
+            val end = LocalDate.of(2026, 8, 31)
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false, "100\\%\\_할인") } returns emptyList()
+
+            expenseService.getRecords(start, end, keyword = "100%_할인")
+
+            verify { expenseRecordRepository.findByExpenseDateBetween(start, end, false, "100\\%\\_할인") }
+        }
+
+        @Test
+        fun getRecords_whenKeywordBlank_shouldPassNullToRepository() {
+            val start = LocalDate.of(2026, 8, 1)
+            val end = LocalDate.of(2026, 8, 31)
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false, null) } returns emptyList()
+
+            expenseService.getRecords(start, end, keyword = "   ")
+
+            verify { expenseRecordRepository.findByExpenseDateBetween(start, end, false, null) }
         }
     }
 
@@ -254,7 +276,7 @@ class ExpenseServiceTest {
                 createRecord(6L, start, category = ExpenseCategory.LIVING, merchant = "올리브영", amount = 20000, paymentMethod = PaymentMethod.CHOYOUNG_PAYMENT),
                 createRecord(7L, start, category = ExpenseCategory.IRREGULAR, merchant = "병원", amount = 50000)
             )
-            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false) } returns records
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false, null) } returns records
 
             expenseService.sendWeeklySummary(start, end, budget = 500000)
 

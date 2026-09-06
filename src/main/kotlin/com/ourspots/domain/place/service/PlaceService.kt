@@ -4,6 +4,7 @@ import com.ourspots.api.dto.*
 import com.ourspots.common.exception.DuplicateException
 import com.ourspots.common.exception.NotFoundException
 import com.ourspots.common.exception.ServiceUnavailableException
+import com.ourspots.common.util.escapeLikePattern
 import com.ourspots.common.util.findByIdOrThrow
 import com.ourspots.common.util.restoreSoftDeleted
 import com.ourspots.domain.photo.entity.PhotoEntityType
@@ -38,10 +39,6 @@ class PlaceService(
     // 개인 카테고리(나의 발자취 등)는 비인증 사용자에게 노출되면 안 됨 — getPlace/getMarkers 공통 규칙
     private fun isHiddenFromUser(type: PlaceType?, authenticated: Boolean): Boolean =
         !authenticated && type in PlaceType.PERSONAL_TYPES
-
-    // LIKE 패턴에서 %, _ 는 와일드카드로 해석되므로 검색어에 그대로 포함되면 의도치 않게 넓게/좁게 매치될 수 있음 → 이스케이프
-    private fun escapeLikePattern(value: String): String =
-        value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     fun getPlace(id: Long, authenticated: Boolean): PlaceResponse {
         val place = placeRepository.findByIdOrThrow(id, "Place")

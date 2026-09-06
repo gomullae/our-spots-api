@@ -112,6 +112,20 @@ class ExpenseControllerIntegrationTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].deletedAt").exists())
         }
+
+        @Test
+        fun getRecords_whenKeywordGiven_shouldReturnOnlyMatchingMerchant() {
+            createTestRecord(LocalDate.of(2026, 8, 10), merchant = "이마트 용산점")
+            createTestRecord(LocalDate.of(2026, 8, 11), merchant = "스타벅스")
+
+            mockMvc.perform(
+                get("/api/expenses?startDate=2026-08-01&endDate=2026-08-31&keyword=이마트")
+                    .header("Authorization", "Bearer $authToken")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].merchant").value("이마트 용산점"))
+        }
     }
 
     @Nested
@@ -435,13 +449,13 @@ class ExpenseControllerIntegrationTest {
         amount = 30000
     )
 
-    private fun createTestRecord(date: LocalDate): ExpenseRecord {
+    private fun createTestRecord(date: LocalDate, merchant: String = "이마트"): ExpenseRecord {
         return expenseRecordRepository.save(
             ExpenseRecord(
                 expenseDate = date,
                 paymentMethod = PaymentMethod.WOORI_CARD,
                 category = ExpenseCategory.FOOD,
-                merchant = "이마트",
+                merchant = merchant,
                 amount = 30000
             )
         )

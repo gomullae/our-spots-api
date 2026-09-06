@@ -5,6 +5,7 @@ import com.ourspots.api.dto.ExpenseRecordRequest
 import com.ourspots.api.dto.ExpenseRecordResponse
 import com.ourspots.common.notification.CategorySpend
 import com.ourspots.common.notification.TelegramNotificationService
+import com.ourspots.common.util.escapeLikePattern
 import com.ourspots.common.util.findByIdOrThrow
 import com.ourspots.common.util.restoreSoftDeleted
 import com.ourspots.domain.expense.entity.ExpenseCategory
@@ -29,9 +30,11 @@ class ExpenseService(
         private const val REGULAR_TOP_ITEMS_COUNT = 5
     }
 
-    fun getRecords(startDate: LocalDate, endDate: LocalDate, includeDeleted: Boolean = false): List<ExpenseRecordResponse> =
-        expenseRecordRepository.findByExpenseDateBetween(startDate, endDate, includeDeleted)
+    fun getRecords(startDate: LocalDate, endDate: LocalDate, includeDeleted: Boolean = false, keyword: String? = null): List<ExpenseRecordResponse> {
+        val escapedKeyword = keyword?.trim()?.takeIf { it.isNotEmpty() }?.let { escapeLikePattern(it) }
+        return expenseRecordRepository.findByExpenseDateBetween(startDate, endDate, includeDeleted, escapedKeyword)
             .map { ExpenseRecordResponse.from(it) }
+    }
 
     // 프론트가 로컬 캐시를 그대로 써도 되는지 확인하는 용도 — count(등록/삭제 감지) + lastModified(수정 감지) 조합
     fun getMeta(): ExpenseMetaResponse =
@@ -80,7 +83,7 @@ class ExpenseService(
     // 트랜잭션으로 처리하므로 조회 자체는 그대로 정상 동작함
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     fun sendWeeklySummary(startDate: LocalDate, endDate: LocalDate, budget: Long) {
-        val records = expenseRecordRepository.findByExpenseDateBetween(startDate, endDate, false)
+        val records = expenseRecordRepository.findByExpenseDateBetween(startDate, endDate, false, null)
         val foodRecords = records.filter { it.category == ExpenseCategory.FOOD }
         val livingRecords = records.filter { it.category == ExpenseCategory.LIVING }
         val irregularRecords = records.filter { it.category == ExpenseCategory.IRREGULAR }

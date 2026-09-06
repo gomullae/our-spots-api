@@ -48,7 +48,8 @@ class ExpenseRecordRepositoryTest {
             val result = expenseRecordRepository.findByExpenseDateBetween(
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 31),
-                false
+                false,
+                null
             )
 
             assertEquals(
@@ -67,7 +68,8 @@ class ExpenseRecordRepositoryTest {
             val result = expenseRecordRepository.findByExpenseDateBetween(
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 31),
-                false
+                false,
+                null
             )
 
             assertTrue(result.isEmpty())
@@ -83,11 +85,60 @@ class ExpenseRecordRepositoryTest {
             val result = expenseRecordRepository.findByExpenseDateBetween(
                 LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 31),
-                true
+                true,
+                null
             )
 
             assertEquals(1, result.size)
             assertEquals(record.id, result[0].id)
+        }
+
+        @Test
+        fun findByExpenseDateBetween_whenKeywordMatchesMerchant_shouldReturnOnlyMatching() {
+            createRecord(LocalDate.of(2026, 8, 10), merchant = "이마트 용산점")
+            createRecord(LocalDate.of(2026, 8, 11), merchant = "스타벅스")
+
+            val result = expenseRecordRepository.findByExpenseDateBetween(
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 31),
+                false,
+                "이마트"
+            )
+
+            assertEquals(1, result.size)
+            assertEquals("이마트 용산점", result[0].merchant)
+        }
+
+        @Test
+        fun findByExpenseDateBetween_whenKeywordIsCaseInsensitive_shouldMatch() {
+            createRecord(LocalDate.of(2026, 8, 10), merchant = "Coupang")
+
+            val result = expenseRecordRepository.findByExpenseDateBetween(
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 31),
+                false,
+                "coupang"
+            )
+
+            assertEquals(1, result.size)
+        }
+
+        @Test
+        fun findByExpenseDateBetween_whenKeywordContainsUnderscore_shouldTreatAsLiteral() {
+            // 이스케이프 없이 그대로 넘기면 '_'가 와일드카드(임의의 한 글자)로 해석돼 "이마트"도 매치되는 버그가
+            // 있었음 — 호출부(ExpenseService)가 이스케이프한다는 전제이므로, 여기선 이미 이스케이프된 값을 직접 넘겨서 검증
+            createRecord(LocalDate.of(2026, 8, 10), merchant = "이_마트")
+            createRecord(LocalDate.of(2026, 8, 11), merchant = "이마트")
+
+            val result = expenseRecordRepository.findByExpenseDateBetween(
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 31),
+                false,
+                "이\\_마트"
+            )
+
+            assertEquals(1, result.size)
+            assertEquals("이_마트", result[0].merchant)
         }
     }
 
@@ -172,13 +223,13 @@ class ExpenseRecordRepositoryTest {
         }
     }
 
-    private fun createRecord(date: LocalDate): ExpenseRecord {
+    private fun createRecord(date: LocalDate, merchant: String = "이마트"): ExpenseRecord {
         return expenseRecordRepository.save(
             ExpenseRecord(
                 expenseDate = date,
                 paymentMethod = PaymentMethod.WOORI_CARD,
                 category = ExpenseCategory.FOOD,
-                merchant = "이마트",
+                merchant = merchant,
                 amount = 10000
             )
         )
