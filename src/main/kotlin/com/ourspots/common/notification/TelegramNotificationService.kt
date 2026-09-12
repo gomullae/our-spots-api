@@ -13,7 +13,9 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 // 카테고리(식비/생활비)별 지출 합계 + 결제자(진우/초영) 구분 합계
-data class CategorySpend(val total: Long, val jinwooTotal: Long, val choyoungTotal: Long)
+// subsidyTotal(지원금)은 진우/초영 어느 쪽 지출도 아닌 별도 항목 — total(진우+초영-지원금)에서는
+// 차감되지만, jinwooTotal/choyoungTotal 각자는 지원금과 무관하게 실제로 각자 결제한 금액 그대로임
+data class CategorySpend(val total: Long, val jinwooTotal: Long, val choyoungTotal: Long, val subsidyTotal: Long = 0)
 
 // 일정 알림용 사람이 읽는 형태로 이미 가공된 값 — ScheduleCategory 등 도메인 타입을 common 계층에 끌어들이지 않기 위해 라벨/날짜 포맷은 호출부(ScheduleService)가 만들어서 넘김.
 // memo는 스레드형 다건 메모(schedule_memos)로 분리되면서 이 요약/diff 대상에서 빠짐 — 메모 추가는 notifyScheduleMemoAdded()가 별도로 알림
@@ -262,6 +264,8 @@ class TelegramNotificationService(
         sb.append("- $label ${format(spend.total)}원\n")
         sb.append("  ㄴ 진우 결제 ${format(spend.jinwooTotal)}원\n")
         sb.append("  ㄴ 초영 결제 ${format(spend.choyoungTotal)}원\n")
+        // 지원금은 진우/초영 어느 결제도 아닌 별도 항목이라 있을 때만 세 번째 줄로 표시
+        if (spend.subsidyTotal > 0) sb.append("  ㄴ 지원금 -${format(spend.subsidyTotal)}원\n")
     }
 
     private fun appendItems(sb: StringBuilder, items: List<Pair<String, Long>>) {

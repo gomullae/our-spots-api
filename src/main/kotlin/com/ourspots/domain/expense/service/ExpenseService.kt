@@ -89,9 +89,9 @@ class ExpenseService(
         val irregularRecords = records.filter { it.category == ExpenseCategory.IRREGULAR }
 
         val regularTopItems = (foodRecords.map { "식비" to it } + livingRecords.map { "생활비" to it })
-            .sortedByDescending { it.second.amount }
+            .sortedByDescending { it.second.effectiveAmount() }
             .take(REGULAR_TOP_ITEMS_COUNT)
-            .map { Triple(it.first, it.second.merchant, it.second.amount) }
+            .map { Triple(it.first, it.second.merchant, it.second.effectiveAmount()) }
 
         telegramNotificationService.notifyWeeklyExpenseSummary(
             weekLabel = "${startDate.format(WEEK_LABEL_FORMAT)}~${endDate.format(WEEK_LABEL_FORMAT)}",
@@ -99,15 +99,32 @@ class ExpenseService(
             foodSpend = categorySpend(foodRecords),
             livingSpend = categorySpend(livingRecords),
             topItems = regularTopItems,
-            irregularTotal = irregularRecords.sumOf { it.amount },
-            irregularItems = irregularRecords.sortedByDescending { it.amount }.map { it.merchant to it.amount }
+            irregularTotal = irregularRecords.sumOf { it.effectiveAmount() },
+            irregularItems = irregularRecords.sortedByDescending { it.effectiveAmount() }.map { it.merchant to it.effectiveAmount() }
         )
     }
 
-    // 진우 결제 = 초영결제(CHOYOUNG_PAYMENT)를 제외한 나머지 결제수단 전부, 초영 결제 = CHOYOUNG_PAYMENT만
+    // 초영 결제 = CHOYOUNG_PAYMENT 또는 CHOYOUNG_IEUM_CARD(초영이음카드), 진우 결제 = 그 나머지 전부
+    // (진우이음카드는 별도 판별 없이 자연히 진우 쪽에 포함됨). 지원금은 진우/초영 어느 결제도 아닌
+    // 별도 항목이라 jinwooTotal/choyoungTotal 계산에서 완전히 제외하고, total(예산 대비 비교용)에서만
+    // 차감함 — "지원금이 진우결제에서 빠지는 걸로 보인다"는 피드백으로 수정(2026-09-12)
     private fun categorySpend(records: List<ExpenseRecord>): CategorySpend {
-        val total = records.sumOf { it.amount }
-        val choyoungTotal = records.filter { it.paymentMethod == PaymentMethod.CHOYOUNG_PAYMENT }.sumOf { it.amount }
-        return CategorySpend(total = total, jinwooTotal = total - choyoungTotal, choyoungTotal = choyoungTotal)
+        val choyoungTotal = records
+            .filter { it.paymentMethod == PaymentMethod.CHOYOUNG_PAYMENT || it.paymentMethod == PaymentMethod.CHOYOUNG_IEUM_CARD }
+            .sumOf { it.amount }
+        val subsidyTotal = records.filter { it.paymentMethod == PaymentMethod.SUBSIDY }.sumOf { it.amount }
+        val jinwooTotal = records
+            .filterNot { it.paymentMethod == PaymentMethod.CHOYOUNG_PAYMENT || it.paymentMethod == PaymentMethod.CHOYOUNG_IEUM_CARD || it.paymentMethod == PaymentMethod.SUBSIDY }
+            .sumOf { it.amount }
+        return CategorySpend(
+            total = jinwooTotal + choyoungTotal - subsidyTotal,
+            jinwooTotal = jinwooTotal,
+            choyoungTotal = choyoungTotal,
+            subsidyTotal = subsidyTotal
+        )
     }
+
+    // 지원금(SUBSIDY)은 실제 지출이 아니라 할인/환급 등으로 받은 돈이라, amount는 항상 양수로 저장하되
+    // 합산 시점엔 부호를 뒤집어 총액에서 차감함 — PaymentMethod.kt의 SUBSIDY 주석 참고
+    private fun ExpenseRecord.effectiveAmount(): Long = if (paymentMethod == PaymentMethod.SUBSIDY) -amount else amount
 }

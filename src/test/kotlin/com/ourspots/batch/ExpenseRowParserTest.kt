@@ -127,10 +127,34 @@ class ExpenseRowParserTest {
 
         @Test
         fun parseRow_whenChoyoungPayment_shouldMapToChoyoungPayment() {
-            val result = ExpenseRowParser.parseRow(validRow(mapOf("카드사" to "초영결제")))
+            val result = ExpenseRowParser.parseRow(validRow(mapOf("카드사" to "초영생활비통장")))
 
             assertTrue(result is ExpenseRowParser.RowResult.Valid)
             assertEquals(PaymentMethod.CHOYOUNG_PAYMENT, (result as ExpenseRowParser.RowResult.Valid).row.paymentMethod)
+        }
+
+        @Test
+        fun parseRow_whenJinwooIeumCard_shouldMapToJinwooIeumCard() {
+            val result = ExpenseRowParser.parseRow(validRow(mapOf("카드사" to "진우이음카드")))
+
+            assertTrue(result is ExpenseRowParser.RowResult.Valid)
+            assertEquals(PaymentMethod.JINWOO_IEUM_CARD, (result as ExpenseRowParser.RowResult.Valid).row.paymentMethod)
+        }
+
+        @Test
+        fun parseRow_whenChoyoungIeumCard_shouldMapToChoyoungIeumCard() {
+            val result = ExpenseRowParser.parseRow(validRow(mapOf("카드사" to "초영이음카드")))
+
+            assertTrue(result is ExpenseRowParser.RowResult.Valid)
+            assertEquals(PaymentMethod.CHOYOUNG_IEUM_CARD, (result as ExpenseRowParser.RowResult.Valid).row.paymentMethod)
+        }
+
+        @Test
+        fun parseRow_whenSubsidy_shouldMapToSubsidy() {
+            val result = ExpenseRowParser.parseRow(validRow(mapOf("카드사" to "지원금")))
+
+            assertTrue(result is ExpenseRowParser.RowResult.Valid)
+            assertEquals(PaymentMethod.SUBSIDY, (result as ExpenseRowParser.RowResult.Valid).row.paymentMethod)
         }
     }
 

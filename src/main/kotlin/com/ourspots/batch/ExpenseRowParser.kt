@@ -15,8 +15,11 @@ object ExpenseRowParser {
         "국민카드" to PaymentMethod.KB_CARD,
         "우리카드" to PaymentMethod.WOORI_CARD,
         "현대카드" to PaymentMethod.HYUNDAI_CARD,
-        "초영결제" to PaymentMethod.CHOYOUNG_PAYMENT,
-        "기타" to PaymentMethod.OTHER
+        "진우이음카드" to PaymentMethod.JINWOO_IEUM_CARD,
+        "초영생활비통장" to PaymentMethod.CHOYOUNG_PAYMENT,
+        "초영이음카드" to PaymentMethod.CHOYOUNG_IEUM_CARD,
+        "기타" to PaymentMethod.OTHER,
+        "지원금" to PaymentMethod.SUBSIDY
     )
 
     val CATEGORY_LABELS = mapOf(

@@ -237,6 +237,45 @@ class TelegramNotificationServiceTest {
         }
 
         @Test
+        fun notifyWeeklyExpenseSummary_whenSubsidyPresent_shouldShowSubsidyLineSeparateFromJinwooAndChoyoung() {
+            val service = newService()
+
+            service.notifyWeeklyExpenseSummary(
+                weekLabel = "8/17~8/23",
+                budget = 500_000,
+                // 지원금은 진우/초영 어느 결제도 아니므로 jinwooTotal/choyoungTotal엔 안 섞이고 별도 줄로만 표시됨
+                foodSpend = CategorySpend(total = 25_000, jinwooTotal = 45_000, choyoungTotal = 0, subsidyTotal = 20_000),
+                livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                topItems = emptyList(),
+                irregularTotal = 0,
+                irregularItems = emptyList()
+            )
+
+            val text = capturedText()
+            assertTrue(text.contains("- 식비 25,000원"))
+            assertTrue(text.contains("  ㄴ 진우 결제 45,000원"))
+            assertTrue(text.contains("  ㄴ 초영 결제 0원"))
+            assertTrue(text.contains("  ㄴ 지원금 -20,000원"))
+        }
+
+        @Test
+        fun notifyWeeklyExpenseSummary_whenNoSubsidy_shouldOmitSubsidyLine() {
+            val service = newService()
+
+            service.notifyWeeklyExpenseSummary(
+                weekLabel = "8/17~8/23",
+                budget = 500_000,
+                foodSpend = CategorySpend(total = 100_000, jinwooTotal = 100_000, choyoungTotal = 0),
+                livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                topItems = emptyList(),
+                irregularTotal = 0,
+                irregularItems = emptyList()
+            )
+
+            assertFalse(capturedText().contains("지원금"))
+        }
+
+        @Test
         fun notifyWeeklyExpenseSummary_shouldIncludeCategoryTaggedTopItemsInOrder() {
             val service = newService()
 

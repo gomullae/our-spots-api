@@ -301,5 +301,103 @@ class ExpenseServiceTest {
                 )
             }
         }
+
+        @Test
+        fun sendWeeklySummary_whenChoyoungIeumCard_shouldAggregateIntoChoyoungTotal() {
+            val start = LocalDate.of(2026, 8, 17)
+            val end = LocalDate.of(2026, 8, 23)
+            val records = listOf(
+                createRecord(1L, start, category = ExpenseCategory.FOOD, merchant = "이마트", amount = 30000, paymentMethod = PaymentMethod.JINWOO_IEUM_CARD),
+                createRecord(2L, start, category = ExpenseCategory.FOOD, merchant = "스타벅스", amount = 15000, paymentMethod = PaymentMethod.CHOYOUNG_IEUM_CARD)
+            )
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false, null) } returns records
+
+            expenseService.sendWeeklySummary(start, end, budget = 500000)
+
+            verify {
+                telegramNotificationService.notifyWeeklyExpenseSummary(
+                    weekLabel = "8/17~8/23",
+                    budget = 500000,
+                    // 진우이음카드는 진우결제, 초영이음카드는 초영결제로 합산돼야 함
+                    foodSpend = CategorySpend(total = 45000, jinwooTotal = 30000, choyoungTotal = 15000),
+                    livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                    topItems = listOf(Triple("식비", "이마트", 30000L), Triple("식비", "스타벅스", 15000L)),
+                    irregularTotal = 0,
+                    irregularItems = emptyList()
+                )
+            }
+        }
+
+        @Test
+        fun sendWeeklySummary_whenSubsidyPresent_shouldSubtractFromTotals() {
+            val start = LocalDate.of(2026, 8, 17)
+            val end = LocalDate.of(2026, 8, 23)
+            val records = listOf(
+                createRecord(1L, start, category = ExpenseCategory.FOOD, merchant = "이마트", amount = 45000),
+                // 지원금(할인) 20,000원 — 식비에서 차감돼야 함
+                createRecord(2L, start, category = ExpenseCategory.FOOD, merchant = "지원금", amount = 20000, paymentMethod = PaymentMethod.SUBSIDY),
+                createRecord(3L, start, category = ExpenseCategory.IRREGULAR, merchant = "병원", amount = 50000),
+                // 비정기지출에도 지원금이 섞일 수 있음 — 동일하게 차감
+                createRecord(4L, start, category = ExpenseCategory.IRREGULAR, merchant = "환급", amount = 10000, paymentMethod = PaymentMethod.SUBSIDY)
+            )
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false, null) } returns records
+
+            expenseService.sendWeeklySummary(start, end, budget = 500000)
+
+            verify {
+                telegramNotificationService.notifyWeeklyExpenseSummary(
+                    weekLabel = "8/17~8/23",
+                    budget = 500000,
+                    // 지원금은 진우/초영 어느 결제도 아닌 별도 항목 — jinwooTotal은 이마트 45,000 그대로,
+                    // total만 지원금 20,000원만큼 차감돼 25,000
+                    foodSpend = CategorySpend(total = 25000, jinwooTotal = 45000, choyoungTotal = 0, subsidyTotal = 20000),
+                    livingSpend = CategorySpend(total = 0, jinwooTotal = 0, choyoungTotal = 0),
+                    // 상위 5건 안에 다 들어가는 개수라 지원금도 음수 금액 그대로 노출됨(랭킹 밖으로 밀려나는 건
+                    // 아래 whenMoreThanFiveItems 테스트에서 별도 검증)
+                    topItems = listOf(Triple("식비", "이마트", 45000L), Triple("식비", "지원금", -20000L)),
+                    // 50,000 - 10,000(지원금) = 40,000
+                    irregularTotal = 40000,
+                    irregularItems = listOf("병원" to 50000L, "환급" to -10000L)
+                )
+            }
+        }
+
+        @Test
+        fun sendWeeklySummary_whenSubsidyRanksBelowTop5_shouldBeExcludedFromTopItems() {
+            val start = LocalDate.of(2026, 8, 17)
+            val end = LocalDate.of(2026, 8, 23)
+            val records = listOf(
+                createRecord(1L, start, category = ExpenseCategory.FOOD, merchant = "이마트", amount = 90000),
+                createRecord(2L, start, category = ExpenseCategory.FOOD, merchant = "배달의민족", amount = 80000),
+                createRecord(3L, start, category = ExpenseCategory.LIVING, merchant = "다이소", amount = 70000),
+                createRecord(4L, start, category = ExpenseCategory.LIVING, merchant = "올리브영", amount = 60000),
+                createRecord(5L, start, category = ExpenseCategory.FOOD, merchant = "스타벅스", amount = 50000),
+                // 음수로 취급돼 6개 중 랭킹 꼴찌 — 상위 5건에서 밀려나야 함
+                createRecord(6L, start, category = ExpenseCategory.FOOD, merchant = "지원금", amount = 30000, paymentMethod = PaymentMethod.SUBSIDY)
+            )
+            every { expenseRecordRepository.findByExpenseDateBetween(start, end, false, null) } returns records
+
+            expenseService.sendWeeklySummary(start, end, budget = 500000)
+
+            verify {
+                telegramNotificationService.notifyWeeklyExpenseSummary(
+                    weekLabel = "8/17~8/23",
+                    budget = 500000,
+                    // jinwooTotal은 지원금 제외한 실제 카드 결제(90,000+80,000+50,000)=220,000, total만 지원금
+                    // 30,000원 차감돼 190,000
+                    foodSpend = CategorySpend(total = 190000, jinwooTotal = 220000, choyoungTotal = 0, subsidyTotal = 30000),
+                    livingSpend = CategorySpend(total = 130000, jinwooTotal = 130000, choyoungTotal = 0),
+                    topItems = listOf(
+                        Triple("식비", "이마트", 90000L),
+                        Triple("식비", "배달의민족", 80000L),
+                        Triple("생활비", "다이소", 70000L),
+                        Triple("생활비", "올리브영", 60000L),
+                        Triple("식비", "스타벅스", 50000L)
+                    ),
+                    irregularTotal = 0,
+                    irregularItems = emptyList()
+                )
+            }
+        }
     }
 }
