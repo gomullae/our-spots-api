@@ -84,6 +84,24 @@ class ExpenseRowParserTest {
         }
 
         @Test
+        fun parseRow_whenAmountNegativeAndWowCard_shouldReturnValid() {
+            // 와우카드는 거래취소/환불을 음수 금액으로 그대로 기록할 수 있게 예외 허용
+            val result = ExpenseRowParser.parseRow(validRow(mapOf("카드사" to "와우카드", "금액" to "-1000")))
+
+            assertTrue(result is ExpenseRowParser.RowResult.Valid)
+            assertEquals(-1000L, (result as ExpenseRowParser.RowResult.Valid).row.amount)
+        }
+
+        @Test
+        fun parseRow_whenAmountZeroAndWowCard_shouldReturnInvalidWithReason() {
+            val result = ExpenseRowParser.parseRow(validRow(mapOf("카드사" to "와우카드", "금액" to "0")))
+
+            assertTrue(result is ExpenseRowParser.RowResult.Invalid)
+            val errors = (result as ExpenseRowParser.RowResult.Invalid).errors
+            assertTrue(errors.any { it.contains("금액") })
+        }
+
+        @Test
         fun parseRow_whenAmountNotNumeric_shouldReturnInvalidWithReason() {
             val result = ExpenseRowParser.parseRow(validRow(mapOf("금액" to "삼만오천원")))
 

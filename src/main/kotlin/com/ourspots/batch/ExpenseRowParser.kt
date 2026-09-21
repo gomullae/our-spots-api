@@ -58,7 +58,10 @@ object ExpenseRowParser {
             if (paymentMethod == null) add("카드사 값을 알 수 없음('$paymentMethodLabel')")
             if (category == null) add("구분 값을 알 수 없음('$categoryLabel')")
             if (merchant.isBlank()) add("사용처 없음")
-            if (amount == null || amount <= 0) add("금액이 올바르지 않음('$amountRaw')")
+            // 와우카드는 거래취소/환불을 음수 금액으로 그대로 기록할 수 있게 허용, 그 외 카드사는 기존대로 양수만 허용
+            if (amount == null || amount == 0L || (amount < 0 && paymentMethod != PaymentMethod.WOW_CARD)) {
+                add("금액이 올바르지 않음('$amountRaw')")
+            }
             if (expenseDate == null) add("지출일자가 올바르지 않음('$dateRaw')")
         }
 

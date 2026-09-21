@@ -231,7 +231,9 @@ class ExpenseControllerIntegrationTest {
         }
 
         @Test
-        fun createRecord_whenAmountNegative_shouldReturn400() {
+        fun createRecord_whenAmountNegative_shouldReturn201() {
+            // 거래취소/환불을 음수 금액으로 그대로 기록할 수 있어야 함(결제수단 무관, 위 ExpenseRowParser의
+            // 와우카드 전용 제한과 달리 웹 API는 전 결제수단 허용)
             val request = validRequest().copy(amount = -1000)
 
             mockMvc.perform(
@@ -240,7 +242,8 @@ class ExpenseControllerIntegrationTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(request))
             )
-                .andExpect(status().isBadRequest)
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.data.amount").value(-1000))
         }
 
         @Test
