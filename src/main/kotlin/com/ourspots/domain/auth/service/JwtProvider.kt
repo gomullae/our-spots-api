@@ -1,5 +1,6 @@
 package com.ourspots.domain.auth.service
 
+import io.jsonwebtoken.ExpiredJwtException
 import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
@@ -56,5 +57,21 @@ class JwtProvider(
     fun isValidAuthHeader(authHeader: String?): Boolean {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) return false
         return validateToken(authHeader.substring(7))
+    }
+
+    // 서명은 정상인데 유효기간만 지난 경우만 true — 헤더 누락/위조된 토큰은 여기 해당 안 됨.
+    // 정상적으로 로그인했던 세션이 그냥 만료된(21일 지남) 경우를 구분해서, 비정상 접근 알림을 거기까지
+    // 울리지 않게 하려는 용도(GlobalExceptionHandler 참고)
+    fun isExpiredToken(token: String): Boolean {
+        return try {
+            Jwts.parser().verifyWith(key).build().parseSignedClaims(token)
+            false
+        } catch (e: ExpiredJwtException) {
+            true
+        } catch (e: JwtException) {
+            false
+        } catch (e: IllegalArgumentException) {
+            false
+        }
     }
 }

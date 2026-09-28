@@ -165,5 +165,56 @@ class JwtProviderTest {
             // then
             assertTrue(result)
         }
+
+        @Test
+        fun isExpiredToken_whenTokenExpired_shouldReturnTrue() {
+            // given - 만료 시간 0시간으로 설정 (즉시 만료)
+            val expiredProvider = JwtProvider(
+                secret = testSecret,
+                expirationHours = 0
+            )
+            val token = expiredProvider.generateToken()
+            Thread.sleep(100)
+
+            // when
+            val result = expiredProvider.isExpiredToken(token)
+
+            // then
+            assertTrue(result)
+        }
+
+        @Test
+        fun isExpiredToken_whenTokenValid_shouldReturnFalse() {
+            // given
+            val token = jwtProvider.generateToken()
+
+            // when
+            val result = jwtProvider.isExpiredToken(token)
+
+            // then
+            assertFalse(result)
+        }
+
+        @Test
+        fun isExpiredToken_whenTokenTampered_shouldReturnFalse() {
+            // given - 만료가 아니라 위조/변조된 토큰은 별개로 취급해야 함
+            val validToken = jwtProvider.generateToken()
+            val tamperedToken = validToken.dropLast(5) + "xxxxx"
+
+            // when
+            val result = jwtProvider.isExpiredToken(tamperedToken)
+
+            // then
+            assertFalse(result)
+        }
+
+        @Test
+        fun isExpiredToken_whenInvalidFormat_shouldReturnFalse() {
+            // when
+            val result = jwtProvider.isExpiredToken("not-a-jwt")
+
+            // then
+            assertFalse(result)
+        }
     }
 }

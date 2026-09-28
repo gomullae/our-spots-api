@@ -154,4 +154,32 @@ class GlobalExceptionHandlerTest {
 
         verify(exactly = 0) { telegramNotificationService.notifyAccessDenied(any(), any(), any(), any()) }
     }
+
+    // 정상적으로 로그인했던 세션이 그냥 만료된 경우 — DB엔 남기되 텔레그램 알림은 건너뜀
+    @Test
+    fun handleUnauthorizedException_whenTokenExpired_shouldPersistButNotNotifyTelegram() {
+        val slot = mutableListOf<AccessDeniedLog>()
+        every { accessDeniedLogRepository.save(capture(slot)) } answers { firstArg() }
+
+        globalExceptionHandler.handleUnauthorizedException(
+            UnauthorizedException("인증이 만료되었습니다. 다시 로그인해주세요.", isTokenExpired = true),
+            mockRequest(method = "GET", uri = "/api/weights")
+        )
+
+        assertEquals(1, slot.size)
+        verify(exactly = 0) { telegramNotificationService.notifyAccessDenied(any(), any(), any(), any()) }
+    }
+
+    // 토큰이 아예 없거나 위조된 경우는 그대로 알림 대상
+    @Test
+    fun handleUnauthorizedException_whenNotTokenExpired_shouldNotifyTelegram() {
+        every { accessDeniedLogRepository.save(any<AccessDeniedLog>()) } answers { firstArg() }
+
+        globalExceptionHandler.handleUnauthorizedException(
+            UnauthorizedException("인증이 필요합니다. 로그인해주세요.", isTokenExpired = false),
+            mockRequest(method = "GET", uri = "/api/weights")
+        )
+
+        verify(exactly = 1) { telegramNotificationService.notifyAccessDenied(any(), any(), any(), any()) }
+    }
 }

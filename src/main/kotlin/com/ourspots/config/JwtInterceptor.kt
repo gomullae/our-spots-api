@@ -31,7 +31,7 @@ class JwtInterceptor(
 
         val token = authHeader.substring(7)
         if (!jwtProvider.validateToken(token)) {
-            throw UnauthorizedException("인증이 만료되었습니다. 다시 로그인해주세요.")
+            throw UnauthorizedException("인증이 만료되었습니다. 다시 로그인해주세요.", isTokenExpired = jwtProvider.isExpiredToken(token))
         }
 
         return true

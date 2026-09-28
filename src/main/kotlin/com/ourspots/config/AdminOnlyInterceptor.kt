@@ -22,8 +22,14 @@ class AdminOnlyInterceptor(
     ): Boolean {
         if (request.method == "OPTIONS") return true
 
-        if (!jwtProvider.isValidAuthHeader(request.getHeader("Authorization"))) {
+        val authHeader = request.getHeader("Authorization")
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             throw UnauthorizedException("인증이 필요합니다. 로그인해주세요.")
+        }
+
+        val token = authHeader.substring(7)
+        if (!jwtProvider.validateToken(token)) {
+            throw UnauthorizedException("인증이 만료되었습니다. 다시 로그인해주세요.", isTokenExpired = jwtProvider.isExpiredToken(token))
         }
         return true
     }
